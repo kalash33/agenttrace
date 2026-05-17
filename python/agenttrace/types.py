@@ -22,7 +22,9 @@ class Trace(BaseModel):
     token_usage: Optional[Dict[str, int]] = None
 
 class AgentTraceOptions(BaseModel):
-    rules: List[Union[str, 'Rule']] = Field(default_factory=list)
+    model_config = {"arbitrary_types_allowed": True}
+    
+    rules: List[Any] = Field(default_factory=list)
     explain: bool = False
     persist: bool = True
     storage_path: str = ".agenttrace/traces.ndjson"

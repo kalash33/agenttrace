@@ -103,12 +103,19 @@ class AgentTrace:
             def __getattr__(self, name):
                 target_attr = getattr(self._target, name)
                 
-                if name in ['invoke', 'run', 'chat', 'generate', 'call'] and inspect.iscoroutinefunction(target_attr):
+                if name in ['invoke', 'run', 'chat', 'generate', 'call', '__call__'] and inspect.iscoroutinefunction(target_attr):
                     async def wrapper(*args, **kwargs):
                         # Extract first arg as the input for tracing if possible
                         original_input = args[0] if args else kwargs
                         return await self._guard.guard_fn(target_attr, original_input, *args, **kwargs)
                     return wrapper
                 return target_attr
+                
+            async def __call__(self, *args, **kwargs):
+                if inspect.iscoroutinefunction(self._target) or (hasattr(self._target, '__call__') and inspect.iscoroutinefunction(self._target.__call__)):
+                    original_input = args[0] if args else kwargs
+                    target_func = self._target if inspect.iscoroutinefunction(self._target) else self._target.__call__
+                    return await self._guard.guard_fn(target_func, original_input, *args, **kwargs)
+                raise TypeError("Wrapped target is not an async callable.")
                 
         return AgentProxy(agent, self)
