@@ -1,34 +1,37 @@
 [build-system]
-requires = ["setuptools>=70.0", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
-name = "agentguard"
+name = "agenttrace"
 version = "0.1.0"
-description = "The open-source accountability layer for AI agents. Trace every action. Explain every decision. Control what matters."
+description = "The accountability layer for AI agents. Trace, explain, and control agent actions."
 readme = "README.md"
+requires-python = ">=3.9"
 license = { text = "MIT" }
-requires-python = ">=3.10"
-keywords = [
-    "ai-agents", "accountability", "explainability", "guardrails",
-    "audit-trail", "langchain", "openai", "anthropic", "agent-safety"
+authors = [
+    { name = "AgentTrace Contributors", email = "hello@agenttrace.ai" }
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Software Development :: Libraries :: Python Modules",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "openai>=1.0.0",
+    "pydantic>=2.0.0",
+    "typing-extensions>=4.0.0",
 ]
 
 [project.optional-dependencies]
-anthropic = ["anthropic>=0.27.0"]
-langchain = ["langchain-core>=0.2.0"]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "mypy>=1.10", "ruff>=0.4"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["agentguard*"]
+[project.urls]
+Homepage = "https://github.com/kalash33/agenttrace"
+Issues = "https://github.com/kalash33/agenttrace/issues"
