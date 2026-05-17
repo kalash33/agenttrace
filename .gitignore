@@ -4,3 +4,4 @@ dist
 .agenttrace
 .DS_Store
 coverage
+venv/
