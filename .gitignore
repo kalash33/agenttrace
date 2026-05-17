@@ -1,0 +1,6 @@
+node_modules
+dist
+.env
+.agenttrace
+.DS_Store
+coverage
