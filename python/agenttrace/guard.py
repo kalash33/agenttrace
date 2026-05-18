@@ -55,13 +55,14 @@ class AgentTrace:
         violations = await run_all_rules(self.rules, ctx)
         
         if violations:
-            # Blocked
+            # Blocked or Shadow
+            is_shadow = self.options.enforcementMode == 'shadow'
             explanation = await self.explainer.explain_block(violations, trace)
             highest_severity = "CRITICAL" if any(v.severity == "CRITICAL" for v in violations) else "HIGH"
             
             guarded_result = GuardedResult(
                 audit_id=trace.id,
-                blocked=True,
+                blocked=not is_shadow,
                 reason=explanation,
                 explanation=explanation,
                 risk_level=highest_severity, # type: ignore
@@ -70,6 +71,8 @@ class AgentTrace:
                 timestamp=datetime.utcnow().isoformat() + "Z",
                 metadata=self.options.metadata
             )
+            if is_shadow:
+                guarded_result.result = result
         else:
             # Allowed
             explanation = await self.explainer.explain_allow(result, trace)

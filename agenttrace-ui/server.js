@@ -3,11 +3,15 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 
+import { fileURLToPath } from 'url';
+
 const app = express();
 app.use(cors());
 
 // Path to the agenttrace logs
-const TRACE_FILE = path.resolve(process.cwd(), '../.agenttrace/traces.ndjson');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const TRACE_FILE = path.resolve(__dirname, '../.agenttrace/traces.ndjson');
 
 app.get('/api/traces', (req, res) => {
   try {

@@ -25,6 +25,7 @@ class AgentTraceOptions(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
     
     rules: List[Any] = Field(default_factory=list)
+    enforcementMode: Literal['enforce', 'shadow'] = 'enforce'
     explain: bool = False
     persist: bool = True
     storage_path: str = ".agenttrace/traces.ndjson"
