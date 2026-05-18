@@ -32,8 +32,19 @@ function App() {
     fetch('http://localhost:3001/api/traces')
       .then(res => res.json())
       .then(data => {
-        setTraces(data);
-        if (data.length > 0) setSelectedTrace(data[0]);
+        const normalized: Trace[] = data.map((raw: any) => ({
+          auditId: raw.id || raw.audit_id || raw.auditId || 'unknown',
+          blocked: !!raw.blocked,
+          riskLevel: raw.risk_level || raw.riskLevel || 'LOW',
+          reason: raw.reason,
+          explanation: raw.explanation,
+          auditTrail: raw.steps || raw.audit_trail || raw.auditTrail || [],
+          violations: raw.violations || [],
+          result: raw.result,
+          timestamp: raw.created_at || raw.timestamp || raw.started_at || new Date().toISOString()
+        }));
+        setTraces(normalized);
+        if (normalized.length > 0) setSelectedTrace(normalized[0]);
       })
       .catch(console.error);
   }, []);
@@ -88,7 +99,7 @@ function App() {
                 </div>
                 <div className="trace-item-action">
                   {trace.blocked ? <ShieldAlert size={16} className="text-red" /> : <CheckCircle size={16} className="text-green" />}
-                  <span>{((trace.auditTrail as any) || (trace as any).audit_trail)?.[0]?.action || 'Unknown Action'}</span>
+                  <span>{trace.auditTrail?.[0]?.action || 'Unknown Action'}</span>
                 </div>
               </div>
             )})}
@@ -136,7 +147,7 @@ function App() {
               <div className="detail-section steps-section">
                 <h3><Terminal size={18} /> Execution Steps</h3>
                 <div className="steps-timeline">
-                  {((selectedTrace.auditTrail as any) || (selectedTrace as any).audit_trail || []).map((step: any, i: number) => (
+                  {selectedTrace.auditTrail.map((step, i) => (
                     <div key={i} className="step-item">
                       <div className="step-marker"></div>
                       <div className="step-content">
