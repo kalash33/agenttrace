@@ -88,7 +88,7 @@ function App() {
                 </div>
                 <div className="trace-item-action">
                   {trace.blocked ? <ShieldAlert size={16} className="text-red" /> : <CheckCircle size={16} className="text-green" />}
-                  <span>{trace.auditTrail?.[0]?.action || 'Unknown Action'}</span>
+                  <span>{((trace.auditTrail as any) || (trace as any).audit_trail)?.[0]?.action || 'Unknown Action'}</span>
                 </div>
               </div>
             )})}
@@ -136,7 +136,7 @@ function App() {
               <div className="detail-section steps-section">
                 <h3><Terminal size={18} /> Execution Steps</h3>
                 <div className="steps-timeline">
-                  {selectedTrace.auditTrail.map((step, i) => (
+                  {((selectedTrace.auditTrail as any) || (selectedTrace as any).audit_trail || []).map((step: any, i: number) => (
                     <div key={i} className="step-item">
                       <div className="step-marker"></div>
                       <div className="step-content">
