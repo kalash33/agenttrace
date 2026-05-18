@@ -1,3 +1,6 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { Tracer } from './tracer.js';
 import { resolveExplainer, NoOpExplainer } from './explainer.js';
 import { resolveRules, runAllRules } from './rules/index.js';
@@ -80,7 +83,18 @@ export class AgentTrace {
   private options: AgentTraceOptions;
 
   constructor(options: AgentTraceOptions = {}) {
-    this.options = options;
+    // Attempt to load global config from agenttrace.config.json
+    let globalConfig: AgentTraceOptions = {};
+    try {
+      const configPath = path.resolve(process.cwd(), 'agenttrace.config.json');
+      if (fs.existsSync(configPath)) {
+        globalConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      }
+    } catch {
+      // Ignore config parsing errors
+    }
+
+    this.options = { ...globalConfig, ...options };
 
     // Resolve rules
     this.rules = resolveRules(options.rules ?? []);
@@ -267,20 +281,22 @@ export class AgentTrace {
       });
 
       if (violations.length > 0) {
-        // BLOCKED
+        // BLOCKED OR SHADOW
+        const isShadow = this.options.enforcementMode === 'shadow';
         const reason = await this.explainer.explainBlock(violations, trace);
         guardedResult = {
           auditId: trace.id,
-          blocked: true,
+          blocked: !isShadow,
           reason,
           riskLevel: computeRiskLevel(violations),
           auditTrail: trace.steps,
           violations,
           timestamp: now,
           metadata: baseMetadata,
+          ...(isShadow ? { result: agentResult } : {}),
         };
 
-        this.log('⛔ BLOCKED', {
+        this.log(isShadow ? '👻 SHADOW (Violations Found)' : '⛔ BLOCKED', {
           auditId: trace.id,
           riskLevel: guardedResult.riskLevel,
           violations: violations.map((v) => `[${v.severity}] ${v.rule}: ${v.description}`),

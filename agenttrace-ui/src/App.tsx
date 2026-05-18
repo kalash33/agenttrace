@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle, ShieldAlert, ShieldCheck, Terminal, Clock, ActivitySquare, AlertOctagon } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, ShieldAlert, ShieldCheck, Terminal, Clock, ActivitySquare, AlertOctagon, BarChart3 } from 'lucide-react';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import './index.css';
 
 type Trace = {
@@ -27,6 +28,7 @@ type Trace = {
 function App() {
   const [traces, setTraces] = useState<Trace[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<Trace | null>(null);
+  const [view, setView] = useState<'overview' | 'detail'>('detail');
 
   useEffect(() => {
     fetch('http://localhost:3001/api/traces')
@@ -53,12 +55,26 @@ function App() {
   const totalBlocked = traces.filter(t => t.blocked).length;
   const criticalIssues = traces.filter(t => t.riskLevel === 'CRITICAL' || t.riskLevel === 'HIGH').length;
 
+  const riskData = [
+    { name: 'Low', value: traces.filter(t => t.riskLevel === 'LOW').length, color: '#10b981' },
+    { name: 'Medium', value: traces.filter(t => t.riskLevel === 'MEDIUM').length, color: '#f59e0b' },
+    { name: 'High/Critical', value: criticalIssues, color: '#ef4444' }
+  ].filter(d => d.value > 0);
+
   return (
     <div className="dashboard-container">
       <header className="header">
         <div className="header-brand">
           <ShieldCheck size={28} className="brand-icon" />
           <h1>AgentTrace Compliance Console</h1>
+        </div>
+        <div className="header-nav">
+          <button className={`nav-btn ${view === 'overview' ? 'active' : ''}`} onClick={() => setView('overview')}>
+            <BarChart3 size={16} /> Overview
+          </button>
+          <button className={`nav-btn ${view === 'detail' ? 'active' : ''}`} onClick={() => setView('detail')}>
+            <Activity size={16} /> Audit Trail
+          </button>
         </div>
         <div className="header-status">
           <span className="status-badge live"><span className="dot"></span> Live Monitoring</span>
@@ -109,7 +125,47 @@ function App() {
 
         {/* Right Content - Trace Details */}
         <section className="detail-view">
-          {selectedTrace ? (
+          {view === 'overview' ? (
+            <div className="overview-card">
+              <div className="detail-header">
+                <h2>Compliance Overview</h2>
+              </div>
+              <div className="charts-grid">
+                <div className="chart-box">
+                  <h3>Risk Distribution</h3>
+                  <div className="chart-container">
+                    <ResponsiveContainer width="100%" height={250}>
+                      <PieChart>
+                        <Pie data={riskData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                          {riskData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <div className="chart-box">
+                  <h3>Action Status</h3>
+                  <div className="chart-container">
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={[
+                        { name: 'Allowed', value: totalAllowed, fill: '#10b981' },
+                        { name: 'Blocked', value: totalBlocked, fill: '#ef4444' }
+                      ]}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                        <XAxis dataKey="name" stroke="#94a3b8" />
+                        <YAxis stroke="#94a3b8" allowDecimals={false} />
+                        <Tooltip cursor={{ fill: '#334155', opacity: 0.2 }} contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155' }} />
+                        <Bar dataKey="value" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : selectedTrace ? (
             <div className="detail-card">
               <div className="detail-header">
                 <h2>Audit Trace Details</h2>
