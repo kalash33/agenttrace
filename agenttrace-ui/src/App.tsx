@@ -74,22 +74,24 @@ function App() {
 
           <h3 className="section-title">Recent Audit Logs</h3>
           <div className="trace-list">
-            {traces.map(trace => (
+            {traces.map(trace => {
+              const rLevel = trace.riskLevel || 'LOW';
+              return (
               <div 
                 key={trace.auditId} 
                 className={`trace-item ${selectedTrace?.auditId === trace.auditId ? 'active' : ''}`}
                 onClick={() => setSelectedTrace(trace)}
               >
                 <div className="trace-item-header">
-                  <span className={`risk-badge risk-${trace.riskLevel.toLowerCase()}`}>{trace.riskLevel}</span>
+                  <span className={`risk-badge risk-${rLevel.toLowerCase()}`}>{rLevel}</span>
                   <span className="time">{new Date(trace.timestamp).toLocaleTimeString()}</span>
                 </div>
                 <div className="trace-item-action">
                   {trace.blocked ? <ShieldAlert size={16} className="text-red" /> : <CheckCircle size={16} className="text-green" />}
-                  <span>{trace.auditTrail[0]?.action || 'Unknown Action'}</span>
+                  <span>{trace.auditTrail?.[0]?.action || 'Unknown Action'}</span>
                 </div>
               </div>
-            ))}
+            )})}
             {traces.length === 0 && <div className="no-data">No logs found in .agenttrace</div>}
           </div>
         </aside>
@@ -106,7 +108,7 @@ function App() {
                   ) : (
                     <span className="badge badge-allowed"><CheckCircle size={16} /> ALLOWED</span>
                   )}
-                  <span className={`badge risk-${selectedTrace.riskLevel.toLowerCase()}`}>RISK: {selectedTrace.riskLevel}</span>
+                  <span className={`badge risk-${(selectedTrace.riskLevel || 'LOW').toLowerCase()}`}>RISK: {selectedTrace.riskLevel || 'LOW'}</span>
                 </div>
               </div>
 
