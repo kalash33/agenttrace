@@ -61,7 +61,16 @@ const server = http.createServer((req, res) => {
 });
 
 const PORT = 3001;
-server.listen(PORT, () => {
-  console.log(`\n🚀 AgentTrace Dashboard running at http://localhost:${PORT}`);
-  console.log(`Reading traces from: ${path.join(process.cwd(), '.agenttrace', 'traces.ndjson')}\n`);
-});
+
+const command = process.argv[2];
+
+if (command === 'ui') {
+  server.listen(PORT, () => {
+    console.log(`\n🚀 AgentTrace Dashboard running at http://localhost:${PORT}`);
+    console.log(`Reading traces from: ${path.join(process.cwd(), '.agenttrace', 'traces.ndjson')}\n`);
+  });
+} else {
+  console.log(`\nAgentTrace CLI v1.0.2`);
+  console.log(`Usage: npx agenttrace ui\n`);
+  process.exit(1);
+}
