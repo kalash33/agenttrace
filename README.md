@@ -157,7 +157,7 @@ All rules run **in parallel** — zero extra latency on the happy path. You can 
 Write your own rules in 5 lines:
 
 ```typescript
-import { createRule, AgentTrace } from 'agenttrace';
+import { createRule, AgentTrace } from '@hackerx333/agenttrace';
 
 const noCompetitorMentions = createRule(
   'no_competitor_mentions',
