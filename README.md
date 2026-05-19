@@ -40,15 +40,9 @@ It automatically visualizes your AI traces, parses multi-step reasoning, and dis
 
 **To launch the dashboard locally:**
 ```bash
-# Clone the repository
-git clone https://github.com/kalash33/agenttrace.git
-cd agenttrace/agenttrace-ui
-
-# Install dependencies and start
-npm install
-npm run dev
+npx agenttrace ui
 ```
-*(The dashboard will instantly read the `.agenttrace/traces.ndjson` file in your main project if you run it from the root workspace).*
+*(The dashboard will instantly read the `.agenttrace/traces.ndjson` file in your main project if you run it from your project root).*
 
 ### 2. Enterprise "Shadow Mode"
 Nervous about breaking production? Use **Shadow Mode**.

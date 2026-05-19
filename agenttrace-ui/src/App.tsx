@@ -31,7 +31,10 @@ function App() {
   const [view, setView] = useState<'overview' | 'detail'>('detail');
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/traces')
+    const apiUrl = window.location.hostname === 'localhost' && window.location.port === '5173' 
+      ? 'http://localhost:3001/api/traces' 
+      : '/api/traces';
+    fetch(apiUrl)
       .then(res => res.json())
       .then(data => {
         const normalized: Trace[] = data.map((raw: any) => ({
