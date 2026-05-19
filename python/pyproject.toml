@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "hackerx33-agenttrace"
+name = "ai-agenttrace"
 version = "1.0.0"
 description = "The accountability layer for AI agents. Trace, explain, and control agent actions."
 readme = "README.md"
