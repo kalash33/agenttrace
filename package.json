@@ -1,5 +1,5 @@
 {
-  "name": "agenttrace",
+  "name": "@hackerx333/agenttrace",
   "version": "1.0.0",
   "description": "The open-source accountability layer for AI agents. Trace every action. Explain every decision. Control what matters.",
   "main": "dist/index.js",

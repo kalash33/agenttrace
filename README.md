@@ -62,11 +62,11 @@ When an action is blocked, AgentTrace uses a lightning-fast LLM (via Featherless
 ### TypeScript / Node.js
 
 ```bash
-npm install agenttrace
+npm install @hackerx333/agenttrace
 ```
 
 ```typescript
-import { AgentTrace } from 'agenttrace';
+import { AgentTrace } from '@hackerx333/agenttrace';
 
 // 1. Initialize the accountability layer
 const guard = new AgentTrace({
