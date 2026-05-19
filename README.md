@@ -38,6 +38,18 @@ AgentTrace ships with a stunning, ultra-premium local React dashboard (`agenttra
 It automatically visualizes your AI traces, parses multi-step reasoning, and displays dynamic Risk Distribution (Low/Medium/High/Critical) and Action Status (Allowed/Blocked) charts.
 *Both TypeScript and Python SDKs log to the exact same file, meaning the dashboard works flawlessly in polyglot monorepos!*
 
+**To launch the dashboard locally:**
+```bash
+# Clone the repository
+git clone https://github.com/kalash33/agenttrace.git
+cd agenttrace/agenttrace-ui
+
+# Install dependencies and start
+npm install
+npm run dev
+```
+*(The dashboard will instantly read the `.agenttrace/traces.ndjson` file in your main project if you run it from the root workspace).*
+
 ### 2. Enterprise "Shadow Mode"
 Nervous about breaking production? Use **Shadow Mode**.
 ```typescript
