@@ -2,7 +2,7 @@
 
 > **The accountability layer for AI agents. Trace every action. Explain every decision. Control what matters.**
 
-[![npm version](https://img.shields.io/npm/v/agenttrace.svg)](https://www.npmjs.com/package/agenttrace)
+[![npm version](https://img.shields.io/npm/v/@hackerx333/agenttrace.svg)](https://www.npmjs.com/package/@hackerx333/agenttrace)
 [![PyPI version](https://img.shields.io/pypi/v/agenttrace.svg)](https://pypi.org/project/agenttrace/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 

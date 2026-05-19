@@ -1,6 +1,6 @@
 {
   "name": "@hackerx333/agenttrace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The open-source accountability layer for AI agents. Trace every action. Explain every decision. Control what matters.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -41,11 +41,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/agenttrace"
+    "url": "git+https://github.com/kalash33/agenttrace.git"
   },
-  "homepage": "https://github.com/yourusername/agenttrace#readme",
+  "homepage": "https://github.com/kalash33/agenttrace#readme",
   "bugs": {
-    "url": "https://github.com/yourusername/agenttrace/issues"
+    "url": "https://github.com/kalash33/agenttrace/issues"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
