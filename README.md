@@ -1,15 +1,22 @@
 # AgentTrace 🛡️
 
-> **Block dangerous AI agent actions. Explain every decision. One line of code.**
+> **The accountability layer for AI agents. Trace every action. Explain every decision. Control what matters.**
 
 [![npm version](https://img.shields.io/npm/v/agenttrace.svg)](https://www.npmjs.com/package/agenttrace)
 [![PyPI version](https://img.shields.io/pypi/v/agenttrace.svg)](https://pypi.org/project/agenttrace/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](#)
 
 *Your AI agent's conscience — blocks harm, explains reasoning, logs everything.*
 
 ---
+
+<!-- 
+🚨 REPOSITORY SETUP CHECKLIST 🚨
+Before launching on Hacker News, update your GitHub repository settings:
+1. **About Description:** "The open-source accountability layer for AI agents. Trace every action. Explain every decision. Control what matters."
+2. **Website Link:** Add the link to your NPM package or official website.
+3. **Topics/Tags:** `ai-agents`, `accountability`, `guardrails`, `llm`, `langchain`, `security`
+-->
 
 ## The Problem
 
