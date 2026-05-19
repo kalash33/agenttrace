@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agenttrace"
+name = "hackerx33-agenttrace"
 version = "1.0.0"
 description = "The accountability layer for AI agents. Trace, explain, and control agent actions."
 readme = "README.md"
@@ -35,3 +35,6 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/kalash33/agenttrace"
 Issues = "https://github.com/kalash33/agenttrace/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agenttrace"]
