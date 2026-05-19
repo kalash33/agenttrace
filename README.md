@@ -23,27 +23,37 @@ Before launching on Hacker News, update your GitHub repository settings:
 AI agents are making autonomous decisions. **Nobody knows why.**
 
 When they go wrong, nobody can explain what happened.
+- 🔴 **51%** of enterprises have AI agents in production.
+- 🔴 **"AI Accountability"** is the #1 enterprise requirement for new AI tools.
+- 🔴 The **EU AI Act** mandates explainability by December 2027.
 
-- 🔴 **51%** of enterprises have AI agents in production ([Ringly.io, 2026](https://www.ringly.io/blog/ai-agent-statistics-2026))
-- 🔴 **75%** have experienced negative consequences from GenAI ([McKinsey, 2025](https://tianpan.co/blog/2026-04-20-ai-audit-trail-user-trust-agent-transparency))
-- 🔴 **42%** abandoned AI projects due to reliability issues ([S&P Global, 2025](https://galileo.ai/blog/best-agent-observability-platforms-scaling-generative-ai))
-- 🔴 **"AI Accountability"** is now the #1 enterprise requirement for new AI tools ([GlobeNewsWire/Jitterbit, May 2026](https://www.globenewswire.com/news-release/2026/05/06/3288602/0/en/AI-Accountability-tops-list-of-enterprise-requirements-for-new-AI-tools.html))
-
-The EU AI Act mandates explainability by December 2027. Boards want decision logs. Your customers want to trust your AI.
-
-**Nobody else provides this combination: open-source + real-time blocking + plain-English explanations + full trace.**
+Boards want decision logs. Your customers want to trust your AI. **Nobody else provides this combination: open-source + real-time blocking + plain-English explanations + full trace.**
 
 ---
 
-## What You Get
+## 🌟 Key Features
 
-| Feature | AgentTrace | Langfuse | Portkey | Lakera |
-|---------|-----------|---------|--------|--------|
-| Blocks dangerous actions | ✅ | ❌ | ⚠️ Partial | ✅ (LLM only) |
-| Explains WHY in plain English | ✅ | ❌ | ❌ | ❌ |
-| Native AI agent support | ✅ | ✅ | ⚠️ Partial | ❌ |
-| Open-source & self-hosted | ✅ | ✅ | ❌ | ❌ |
-| Full audit trail | ✅ | ✅ | ⚠️ | ❌ |
+### 1. The React Dashboard
+AgentTrace ships with a stunning, ultra-premium local React dashboard (`agenttrace-ui`).
+It automatically visualizes your AI traces, parses multi-step reasoning, and displays dynamic Risk Distribution (Low/Medium/High/Critical) and Action Status (Allowed/Blocked) charts.
+*Both TypeScript and Python SDKs log to the exact same file, meaning the dashboard works flawlessly in polyglot monorepos!*
+
+### 2. Enterprise "Shadow Mode"
+Nervous about breaking production? Use **Shadow Mode**.
+```typescript
+const guard = new AgentTrace({
+  enforcementMode: 'shadow', // 'enforce' | 'shadow'
+  rules: ['block_financial_advice']
+});
+```
+In Shadow Mode, AgentTrace will detect the violation, log it as CRITICAL, and generate the plain-English rationale for the dashboard—but it will **not** block the agent's output from reaching the user. 
+
+### 3. Global Configuration
+Drop an `agenttrace.config.json` file in the root of your project. The SDK automatically resolves it.
+Configure your compliance rules, LLM explaining models, and enforcement modes universally across hundreds of microservices.
+
+### 4. AI Explainer Engine
+When an action is blocked, AgentTrace uses a lightning-fast LLM (via Featherless, OpenAI, or Anthropic) to read the context and write a plain-English explanation for the compliance officer (e.g., *"Agent was blocked because it attempted to provide uncertified medical advice regarding dosage."*).
 
 ---
 
@@ -58,39 +68,33 @@ npm install agenttrace
 ```typescript
 import { AgentTrace } from 'agenttrace';
 
+// 1. Initialize the accountability layer
 const guard = new AgentTrace({
+  enforcementMode: 'enforce',
   rules: [
     'block_pii_leakage',       // Stop PII leaking to users
     'block_financial_advice',  // No unqualified investment advice
-    'block_harmful_content',   // Violence, illegal activities, self-harm
     'require_human_approval',  // Gate high-value transactions
   ],
   explain: true,               // Generate plain-English explanations
-  humanApproval: {
-    threshold: 1000,           // Require approval for actions > $1,000
-    onApprovalRequired: async ({ description, amount }) => {
-      // Send Slack alert, email, UI prompt — whatever you need
-      return await myApprovalSystem.request(description, amount);
-    },
-  },
 });
 
-// Wrap your agent — same interface, now accountable
-const safeAgent = guard.wrap(myAgent);
+// 2. Wrap your agent — same interface, now accountable
+const safeAgent = guard.wrap(myLangChainAgent);
 
+// 3. Run it
 const result = await safeAgent.run("Process this customer refund");
 
 // If BLOCKED:
 // result.blocked   → true
+// result.riskLevel → 'CRITICAL'
 // result.reason    → "Agent action BLOCKED. Violated rule(s): require_human_approval..."
-// result.violations → [{ rule, description, severity, evidence }]
 
 // If ALLOWED:
 // result.blocked      → false
-// result.explanation  → "Agent processed a $50 refund because the customer's..."
+// result.explanation  → "Agent processed a $50 refund because the product was defective."
 // result.riskLevel    → 'LOW'
 // result.auditTrail   → [step1, step2, ...] — full reasoning chain
-// result.auditId      → 'uuid-...' — look it up later
 ```
 
 ### Python
@@ -103,16 +107,17 @@ pip install agenttrace
 from agenttrace import AgentTrace, AgentTraceOptions
 
 guard = AgentTrace(AgentTraceOptions(
-    rules=["block_pii_leakage", "block_harmful_content", "block_financial_advice"],
-    debug=True,
+    enforcementMode='shadow',
+    rules=["block_pii_leakage", "block_harmful_content"],
+    explain=True,
 ))
 
-safe_agent = guard.wrap(my_langchain_agent)
-result = safe_agent.invoke("Process customer request")
+safe_agent = guard.wrap(my_crewai_agent)
+result = await safe_agent.invoke("Process customer request")
 
 print(result.blocked)     # True/False
 print(result.risk_level)  # 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
-print(result.audit_id)    # UUID for audit trail lookup
+print(result.explanation) # "Agent accessed non-sensitive records securely."
 ```
 
 ---
