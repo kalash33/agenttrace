@@ -1,0 +1,28 @@
+# Source files — not needed in published package
+src/
+tests/
+examples/
+agenttrace-ui/src/
+agenttrace-ui/node_modules/
+
+# agenttrace-ui/dist is deliberately INCLUDED (needed for npx agenttrace ui)
+# The nested agenttrace-ui/.gitignore excludes dist — override it here
+!agenttrace-ui/dist
+!agenttrace-ui/dist/**
+
+# Config files
+tsup.config.ts
+tsconfig.json
+agenttrace-ui/tsconfig.json
+agenttrace-ui/vite.config.ts
+agenttrace-ui/.gitignore
+vitest.config.ts
+.gitignore
+
+# Dev artifacts
+*.log
+coverage/
+.DS_Store
+.agenttrace/
+
+# agenttrace-ui/dist is deliberately INCLUDED (needed for npx agenttrace ui)

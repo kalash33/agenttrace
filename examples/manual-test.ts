@@ -86,7 +86,7 @@ function printResult(result: any) {
   if (result.blocked) {
     console.log(`❌ ACTION BLOCKED (Risk: ${result.riskLevel})`);
     console.log(`🛑 Violations: ${result.violations.map((v: any) => v.rule).join(', ')}`);
-    console.log(`📖 Explanation: ${result.explanation}`);
+    console.log(`📖 Explanation: ${result.reason}`);
   } else {
     console.log(`✅ ACTION ALLOWED (Risk: ${result.riskLevel})`);
     console.log(`📖 Explanation: ${result.explanation}`);

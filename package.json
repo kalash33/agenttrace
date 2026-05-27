@@ -1,6 +1,6 @@
 {
   "name": "@hackerx333/agenttrace",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "The open-source accountability layer for AI agents. Trace every action. Explain every decision. Control what matters.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -32,13 +32,19 @@
     "explainability",
     "guardrails",
     "audit-trail",
+    "multi-agent",
+    "circuit-breaker",
+    "agent-pipeline",
     "langchain",
+    "crewai",
     "openai",
     "anthropic",
     "agent-safety",
     "llm",
     "typescript",
-    "agenttrace"
+    "agenttrace",
+    "eu-ai-act",
+    "compliance"
   ],
   "author": "",
   "license": "MIT",
@@ -69,6 +75,7 @@
   "files": [
     "dist",
     "bin",
+    "docs",
     "agenttrace-ui/dist",
     "README.md",
     "LICENSE"

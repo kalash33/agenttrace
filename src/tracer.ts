@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { Trace, TraceStep } from './types.js';
+import type { Trace, TraceStep, PipelineContext } from './types.js';
 
 /**
  * Tracer — records every step of an agent run into a structured Trace object.
@@ -8,14 +8,20 @@ import type { Trace, TraceStep } from './types.js';
 export class Tracer {
   /**
    * Start a new trace for an agent invocation.
+   * Optionally stamps the trace with pipeline context (pipelineId, parentTraceId, agentName)
+   * when this agent is running inside an AgentPipeline.
    */
-  start(originalInput: unknown): Trace {
+  start(originalInput: unknown, pipelineContext?: PipelineContext): Trace {
     return {
       id: uuidv4(),
       startedAt: new Date().toISOString(),
       originalInput,
       steps: [],
       lastAction: 'unknown',
+      // Pipeline lineage fields (undefined when running standalone)
+      pipelineId: pipelineContext?.pipelineId,
+      parentTraceId: pipelineContext?.parentTraceId,
+      agentName: pipelineContext?.agentName,
     };
   }
 

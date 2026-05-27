@@ -1,12 +1,13 @@
 /**
- * AgentTrace — The open-source accountability layer for AI agents.
+ * AgentTrace — The open-source circuit breaker and accountability layer for AI agents.
  * Trace every action. Explain every decision. Control what matters.
  *
  * @packageDocumentation
  */
 
-// ─── Main Class ───────────────────────────────────────────────────────────────
+// ─── Main Classes ─────────────────────────────────────────────────────────────
 export { AgentTrace, AgentGuard } from './guard.js';
+export { AgentPipeline } from './pipeline.js';
 
 // ─── Rules ────────────────────────────────────────────────────────────────────
 export {
@@ -33,15 +34,20 @@ export { Store } from './store.js';
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type {
   AgentTraceOptions,
-  AgentGuardOptions,   // backwards compat
+  AgentGuardOptions,       // backwards compat
+  AgentPipelineOptions,
   BuiltInRuleName,
   ExplainerProvider,
   GuardedResult,
   HumanApprovalOptions,
   LLMProviderConfig,
+  PipelineContext,
+  PipelineResult,
+  PipelineStage,
   RiskLevel,
   Rule,
   RuleContext,
+  StageResult,
   Trace,
   TraceStep,
   Violation,

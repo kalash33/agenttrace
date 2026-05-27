@@ -9,6 +9,7 @@ import type {
   AgentTraceOptions,
   ExplainerProvider,
   GuardedResult,
+  PipelineContext,
   RiskLevel,
   Rule,
   Trace,
@@ -56,23 +57,35 @@ function computeBaseRiskLevel(trace: Trace): RiskLevel {
  * - Plain-English decision explanations via an LLM
  * - Full multi-step audit trail
  * - Local persistent storage (NDJSON, zero native deps)
+ * - Pipeline context stamping (when used inside AgentPipeline)
  *
  * @example
  * ```typescript
- * import { AgentTrace } from 'agenttrace';
+ * import { AgentTrace } from '@hackerx333/agenttrace';
  *
- * const trace = new AgentTrace({
+ * const guard = new AgentTrace({
  *   rules: ['block_pii_leakage', 'require_human_approval'],
  *   explain: true,
- *   llm: {
- *     baseURL: 'https://api.featherless.ai/v1',
- *     apiKey: process.env.FEATHERLESS_API_KEY,
- *     model: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-14B',
- *   },
  * });
  *
- * const safeAgent = trace.wrap(myAgent);
+ * const safeAgent = guard.wrap(myAgent);
  * const result = await safeAgent.run('Process customer refund');
+ * ```
+ *
+ * @example Multi-agent pipeline
+ * ```typescript
+ * import { AgentTrace, AgentPipeline } from '@hackerx333/agenttrace';
+ *
+ * const pipeline = new AgentPipeline({
+ *   name: 'support-pipeline',
+ *   agents: [
+ *     { name: 'researcher', guard: new AgentTrace({ rules: ['block_hallucination'] }), agent: researchAgent },
+ *     { name: 'executor',   guard: new AgentTrace({ rules: ['require_human_approval'] }), agent: executorAgent },
+ *   ],
+ * });
+ *
+ * const result = await pipeline.run(userInput);
+ * // result.shortCircuited → true if any stage was blocked
  * ```
  */
 export class AgentTrace {
@@ -171,7 +184,8 @@ export class AgentTrace {
     fn: () => Promise<T>,
     input?: unknown
   ): Promise<GuardedResult & { result?: T }> {
-    const trace = this.tracer.start(input);
+    const pipelineContext = this.options._pipelineContext;
+    const trace = this.tracer.start(input, pipelineContext);
     const start = Date.now();
 
     let agentResult: T;
@@ -212,6 +226,25 @@ export class AgentTrace {
     this.store?.close();
   }
 
+  // ─── Internal: Pipeline Context Injection ───────────────────────────────────
+
+  /**
+   * Called by AgentPipeline to inject pipeline context before each stage run.
+   * Not part of the public API — use AgentPipeline instead.
+   * @internal
+   */
+  _setPipelineContext(ctx: PipelineContext): void {
+    this.options._pipelineContext = ctx;
+  }
+
+  /**
+   * Clears the injected pipeline context after a stage completes.
+   * @internal
+   */
+  _clearPipelineContext(): void {
+    this.options._pipelineContext = undefined;
+  }
+
   // ─── Internal: Guarded Agent Call ──────────────────────────────────────────
 
   private async _guardedCall(
@@ -220,7 +253,8 @@ export class AgentTrace {
     method: (...args: unknown[]) => Promise<unknown>,
     args: unknown[]
   ): Promise<GuardedResult> {
-    const trace = this.tracer.start(args[0]);
+    const pipelineContext = this.options._pipelineContext;
+    const trace = this.tracer.start(args[0], pipelineContext);
     const start = Date.now();
 
     let agentResult: unknown;
@@ -271,6 +305,8 @@ export class AgentTrace {
         result: agentResult,
         timestamp: now,
         metadata: baseMetadata,
+        pipelineId: trace.pipelineId,
+        parentTraceId: trace.parentTraceId,
       };
     } else {
       // Run ALL rules in parallel for zero added serial latency
@@ -293,6 +329,8 @@ export class AgentTrace {
           violations,
           timestamp: now,
           metadata: baseMetadata,
+          pipelineId: trace.pipelineId,
+          parentTraceId: trace.parentTraceId,
           ...(isShadow ? { result: agentResult } : {}),
         };
 
@@ -316,6 +354,8 @@ export class AgentTrace {
           result: agentResult,
           timestamp: now,
           metadata: baseMetadata,
+          pipelineId: trace.pipelineId,
+          parentTraceId: trace.parentTraceId,
         };
 
         this.log('✅ ALLOWED', {

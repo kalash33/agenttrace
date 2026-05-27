@@ -338,3 +338,100 @@ describe('Integration — LLM Reliability', () => {
     expect(elapsed).toBeLessThan(35_000);  // must complete within 35s
   }, 40_000);
 });
+
+// ─── AgentPipeline Integration Tests ─────────────────────────────────────────
+
+import { AgentPipeline } from '../../src/pipeline.js';
+
+describe('Integration — AgentPipeline full flow', () => {
+  it('completes a 3-stage pipeline with all stages passing', async () => {
+    if (skipIfNoIntegration()) return;
+
+    const mkGuard = (rules: string[] = []) => new AgentTrace({
+      rules: rules as never[],
+      persist: false,
+    });
+
+    const pipeline = new AgentPipeline({
+      name: 'integration-happy-path',
+      agents: [
+        { name: 'researcher', guard: mkGuard(), agent: realLikeAgent({ facts: 'The Eiffel Tower is in Paris.' }) },
+        { name: 'drafter',    guard: mkGuard(), agent: realLikeAgent({ draft: 'Dear team, here is the summary.' }) },
+        { name: 'executor',   guard: mkGuard(), agent: realLikeAgent({ status: 'sent' }) },
+      ],
+    });
+
+    const result = await pipeline.run('Research and send email about the Eiffel Tower');
+
+    console.log('\n  Pipeline result:', JSON.stringify({
+      pipelineId: result.pipelineId,
+      shortCircuited: result.shortCircuited,
+      stages: result.stages.map(s => ({ name: s.name, blocked: s.blocked, riskLevel: s.riskLevel })),
+    }, null, 2));
+
+    expect(result.shortCircuited).toBe(false);
+    expect(result.stages).toHaveLength(3);
+    expect(result.stages.every(s => !s.blocked)).toBe(true);
+    // Lineage chain
+    expect(result.stages[0]?.parentTraceId).toBeUndefined();
+    expect(result.stages[1]?.parentTraceId).toBe(result.stages[0]?.auditId);
+    expect(result.stages[2]?.parentTraceId).toBe(result.stages[1]?.auditId);
+  }, 30_000);
+
+  it('short-circuits when stage 1 outputs PII', async () => {
+    if (skipIfNoIntegration()) return;
+
+    const pipeline = new AgentPipeline({
+      name: 'integration-short-circuit',
+      agents: [
+        {
+          name: 'leaky-agent',
+          guard: new AgentTrace({ rules: ['block_pii_leakage'], persist: false }),
+          agent: realLikeAgent({ user: { email: 'john@example.com', ssn: '123-45-6789' } }),
+        },
+        {
+          name: 'downstream',
+          guard: new AgentTrace({ persist: false }),
+          agent: realLikeAgent('would have run'),
+        },
+      ],
+    });
+
+    const result = await pipeline.run('Fetch user profile');
+
+    console.log('\n  Short-circuit result:', {
+      shortCircuited: result.shortCircuited,
+      blockedAt: result.blockedAt,
+      stagesRan: result.stages.length,
+    });
+
+    expect(result.shortCircuited).toBe(true);
+    expect(result.blockedAt).toBe('leaky-agent');
+    expect(result.stages).toHaveLength(1);
+    expect(result.stages[0]?.blocked).toBe(true);
+    expect(result.stages[0]?.violations?.some((v: any) => v.rule === 'block_pii_leakage')).toBe(true);
+  }, 30_000);
+
+  it('pipeline with real explainer generates explanation per stage', async () => {
+    if (skipIfNoIntegration()) return;
+
+    const pipeline = new AgentPipeline({
+      name: 'integration-with-explain',
+      agents: [
+        {
+          name: 'agent-1',
+          guard: new AgentTrace({ rules: ['block_pii_leakage'], explain: true, llm: FEATHERLESS_LLM, persist: false }),
+          agent: realLikeAgent('The customer complaint has been resolved. Store credit issued. No PII present.'),
+        },
+      ],
+    });
+
+    const result = await pipeline.run('Resolve complaint');
+
+    const stage = result.stages[0]!;
+    console.log('\n  Stage explanation:', stage.explanation);
+
+    expect(stage.blocked).toBe(false);
+    expect(stage.explanation).toBeTruthy();
+  }, 60_000);
+});
