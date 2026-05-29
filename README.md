@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/logo.png" alt="AgentTrace Logo" width="140" />
+</p>
+
 # AgentTrace 🛡️
 
 > **"Agent 1 made an error. Agent 2 built on it. Agent 3 executed it. All three returned status 200. Nobody knew."**
