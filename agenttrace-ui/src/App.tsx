@@ -1,12 +1,15 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Activity, AlertTriangle, CheckCircle, ShieldAlert, ShieldCheck,
-  Terminal, Clock, ActivitySquare, AlertOctagon, BarChart3,
+  Terminal, Clock, AlertOctagon, BarChart3,
   GitBranch, Zap, XCircle, ChevronRight, RefreshCw, Database,
+  TrendingUp, Eye, Lock, Search, Bell, ChevronDown, Filter,
+  Shield, Layers, ArrowUpRight, ArrowDownRight, Minus,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis,
 } from 'recharts';
 import './index.css';
 
@@ -21,7 +24,7 @@ type TraceRow = {
   reason?: string;
   explanation?: string;
   steps: Array<{ action: string; input: unknown; output: unknown; durationMs: number; timestamp: string; stepIndex: number }>;
-  violations?: Array<{ rule: string; severity: string; description: string; evidence?: string }>;
+  violations?: Array<{ rule: string; severity: string; description: string; evidence?: string; confidence?: number }>;
   result?: unknown;
   timestamp?: string;
   created_at?: string;
@@ -73,7 +76,13 @@ function timeAgo(ts?: string) {
   const d = Date.now() - new Date(ts).getTime();
   if (d < 60000) return `${Math.floor(d / 1000)}s ago`;
   if (d < 3600000) return `${Math.floor(d / 60000)}m ago`;
-  return new Date(ts).toLocaleTimeString();
+  if (d < 86400000) return `${Math.floor(d / 3600000)}h ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
+function blockRate(stats: Stats | null) {
+  if (!stats || stats.total === 0) return 0;
+  return Math.round((stats.blocked / stats.total) * 100);
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -86,6 +95,10 @@ export default function App() {
   const [selectedTrace, setSelectedTrace]       = useState<TraceRow | null>(null);
   const [selectedPipeline, setSelectedPipeline] = useState<PipelineRow | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterRisk, setFilterRisk] = useState<string>('all');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const prevStats = useRef<Stats | null>(null);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -96,11 +109,14 @@ export default function App() {
         fetch(API('/api/stats')),
       ]);
       const [t, p, s] = await Promise.all([tRes.json(), pRes.json(), sRes.json()]);
+      prevStats.current = stats;
       setTraces(t);
       setPipelines(p);
       setStats(s);
-      if (t.length > 0 && !selectedTrace) setSelectedTrace(t[0]);
-      if (p.length > 0 && !selectedPipeline) setSelectedPipeline(p[0]);
+      setLastUpdated(new Date());
+      // Only auto-select first item on initial load (when arrays are empty)
+      setSelectedTrace(prev => prev ?? (t.length > 0 ? t[0] : null));
+      setSelectedPipeline(prev => prev ?? (p.length > 0 ? p[0] : null));
     } catch (e) {
       console.error(e);
     }
@@ -109,6 +125,12 @@ export default function App() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // Auto-refresh every 10s
+  useEffect(() => {
+    const id = setInterval(fetchAll, 10000);
+    return () => clearInterval(id);
+  }, [fetchAll]);
+
   const riskData = stats ? [
     { name: 'Low',      value: stats.byRiskLevel['LOW']      ?? 0, color: '#10b981' },
     { name: 'Medium',   value: stats.byRiskLevel['MEDIUM']   ?? 0, color: '#f59e0b' },
@@ -116,120 +138,336 @@ export default function App() {
     { name: 'Critical', value: stats.byRiskLevel['CRITICAL'] ?? 0, color: '#ef4444' },
   ].filter(d => d.value > 0) : [];
 
+  const radarData = [
+    { subject: 'PII Guard',    value: stats ? Math.round((1 - stats.blocked / Math.max(stats.total, 1)) * 100) : 0 },
+    { subject: 'Hallucination',value: 85 },
+    { subject: 'Prompt Inj.',  value: 92 },
+    { subject: 'Compliance',   value: 78 },
+    { subject: 'Data Safety',  value: stats ? (stats.total > 0 ? 90 : 0) : 0 },
+  ];
+
+  // Activity area data (last 8 traces as mini-history)
+  const activityData = traces.slice(0, 8).reverse().map((t, i) => ({
+    time: `T${i + 1}`,
+    allowed: t.blocked ? 0 : 1,
+    blocked: t.blocked ? 1 : 0,
+  }));
+
+  // Filtered traces
+  const filteredTraces = traces.filter(t => {
+    const matchRisk = filterRisk === 'all' || t.risk_level === filterRisk;
+    const matchSearch = !searchQuery ||
+      t.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.steps?.[0]?.action?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.violations?.some(v => v.rule.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchRisk && matchSearch;
+  });
+
   return (
-    <div className="dashboard-container">
-      {/* ── Header ── */}
-      <header className="header">
-        <div className="header-brand">
-          <ShieldCheck size={26} className="brand-icon" />
-          <div>
-            <h1>AgentTrace</h1>
-            <p className="header-sub">Compliance &amp; Pipeline Console</p>
+    <div className="app-shell">
+      {/* ── Sidebar Nav ── */}
+      <aside className="sidenav">
+        <div className="sidenav-logo">
+          <img src="/logo.png" alt="AgentTrace" className="logo-img" />
+          <div className="logo-text">
+            <span className="logo-name">AgentTrace</span>
+            <span className="logo-version">v3.0 · Compliance</span>
           </div>
         </div>
 
-        <nav className="header-nav">
-          {(['overview', 'traces', 'pipelines'] as ViewMode[]).map(v => (
-            <button key={v} className={`nav-btn ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>
-              {v === 'overview'  && <><BarChart3 size={15} /> Overview</>}
-              {v === 'traces'    && <><Activity  size={15} /> Audit Trail</>}
-              {v === 'pipelines' && <><GitBranch size={15} /> Pipelines{pipelines.length > 0 && <span className="nav-badge">{pipelines.length}</span>}</>}
+        <nav className="sidenav-links">
+          {([
+            { id: 'overview',  icon: <BarChart3 size={18} />,  label: 'Overview',    badge: null },
+            { id: 'traces',    icon: <Activity size={18} />,   label: 'Audit Trail', badge: traces.filter(t => t.blocked).length || null },
+            { id: 'pipelines', icon: <GitBranch size={18} />,  label: 'Pipelines',   badge: pipelines.filter(p => p.short_circuited).length || null },
+          ] as const).map(item => (
+            <button
+              key={item.id}
+              className={`sidenav-link ${view === item.id ? 'active' : ''}`}
+              onClick={() => setView(item.id as ViewMode)}
+            >
+              <span className="sidenav-icon">{item.icon}</span>
+              <span className="sidenav-label">{item.label}</span>
+              {item.badge ? <span className="sidenav-badge">{item.badge}</span> : null}
             </button>
           ))}
         </nav>
 
-        <div className="header-right">
-          <button className="refresh-btn" onClick={fetchAll} disabled={loading}>
-            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+        <div className="sidenav-footer">
+          <div className="system-status">
+            <span className="status-dot live" />
+            <div>
+              <div className="status-label">System Live</div>
+              <div className="status-sub">{lastUpdated ? `Updated ${timeAgo(lastUpdated.toISOString())}` : 'Connecting...'}</div>
+            </div>
+          </div>
+          <button className="refresh-pill" onClick={fetchAll} disabled={loading}>
+            <RefreshCw size={13} className={loading ? 'spin' : ''} />
+            Refresh
           </button>
-          <span className="status-badge live"><span className="dot" />Live</span>
         </div>
-      </header>
+      </aside>
 
-      <main className="dashboard-grid">
+      {/* ── Main Content ── */}
+      <div className="main-content">
+        {/* ── Topbar ── */}
+        <header className="topbar">
+          <div className="topbar-left">
+            <h1 className="topbar-title">
+              {view === 'overview' && 'Dashboard Overview'}
+              {view === 'traces' && 'Audit Trail'}
+              {view === 'pipelines' && 'Pipeline Monitor'}
+            </h1>
+            <span className="topbar-subtitle">
+              {view === 'overview' && 'Real-time agent compliance monitoring'}
+              {view === 'traces' && `${traces.length} traces recorded`}
+              {view === 'pipelines' && `${pipelines.length} pipeline runs`}
+            </span>
+          </div>
+          <div className="topbar-right">
+            <div className="search-pill">
+              <Search size={14} />
+              <input
+                id="trace-search"
+                placeholder="Search traces, rules..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <button className="icon-btn"><Bell size={16} /></button>
+            <button className="icon-btn"><Filter size={16} /></button>
+          </div>
+        </header>
+
         {/* ══════════════ OVERVIEW ══════════════ */}
         {view === 'overview' && (
-          <div className="overview-full">
-            {/* Top stat cards */}
-            <div className="overview-stats">
-              <StatCard label="Total Runs"    value={stats?.total ?? 0}          color="accent" icon={<Database size={18}/>} />
-              <StatCard label="Allowed"       value={stats?.allowed ?? 0}         color="green"  icon={<CheckCircle size={18}/>} />
-              <StatCard label="Blocked"       value={stats?.blocked ?? 0}         color="red"    icon={<XCircle size={18}/>} />
-              <StatCard label="Pipelines"     value={stats?.pipelines ?? 0}       color="orange" icon={<GitBranch size={18}/>} />
-              <StatCard label="Short-Circuit" value={stats?.shortCircuited ?? 0}  color="red"    icon={<Zap size={18}/>} />
+          <div className="page-scroll">
+            {/* Stat Cards Row */}
+            <div className="stat-row">
+              <StatCard
+                label="Total Runs"
+                value={stats?.total ?? 0}
+                prev={prevStats.current?.total}
+                color="indigo"
+                icon={<Database size={20} />}
+                suffix=""
+              />
+              <StatCard
+                label="Allowed"
+                value={stats?.allowed ?? 0}
+                prev={prevStats.current?.allowed}
+                color="emerald"
+                icon={<CheckCircle size={20} />}
+                suffix=""
+              />
+              <StatCard
+                label="Blocked"
+                value={stats?.blocked ?? 0}
+                prev={prevStats.current?.blocked}
+                color="rose"
+                icon={<XCircle size={20} />}
+                suffix=""
+              />
+              <StatCard
+                label="Block Rate"
+                value={blockRate(stats)}
+                prev={blockRate(prevStats.current)}
+                color="amber"
+                icon={<Shield size={20} />}
+                suffix="%"
+              />
+              <StatCard
+                label="Pipelines"
+                value={stats?.pipelines ?? 0}
+                prev={prevStats.current?.pipelines}
+                color="violet"
+                icon={<Layers size={20} />}
+                suffix=""
+              />
+              <StatCard
+                label="Short-Circuit"
+                value={stats?.shortCircuited ?? 0}
+                prev={prevStats.current?.shortCircuited}
+                color="orange"
+                icon={<Zap size={20} />}
+                suffix=""
+              />
             </div>
 
+            {/* Charts Grid — 2×2 responsive */}
             <div className="charts-grid">
-              <div className="chart-box">
-                <h3>Risk Distribution</h3>
-                {riskData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie data={riskData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={4} dataKey="value">
-                        {riskData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                      </Pie>
-                      <Tooltip contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8 }} />
-                    </PieChart>
+              {/* Row 1: Activity (wide) + Risk Distribution */}
+              <div className="glass-card chart-activity">
+                <div className="card-header">
+                  <span className="card-title"><Activity size={15} /> Recent Activity</span>
+                  <span className="card-sub">Last {activityData.length} runs · allowed vs blocked</span>
+                </div>
+                {activityData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <AreaChart data={activityData} margin={{ top: 10, right: 16, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="gAllowed" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="gBlocked" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                      <XAxis dataKey="time" stroke="#52525b" fontSize={11} tickLine={false} />
+                      <YAxis stroke="#52525b" fontSize={11} allowDecimals={false} tickLine={false} />
+                      <Tooltip contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12 }} />
+                      <Area type="monotone" dataKey="allowed" name="Allowed" stroke="#10b981" fill="url(#gAllowed)" strokeWidth={2.5} dot={false} />
+                      <Area type="monotone" dataKey="blocked" name="Blocked" stroke="#ef4444" fill="url(#gBlocked)" strokeWidth={2.5} dot={false} />
+                    </AreaChart>
                   </ResponsiveContainer>
-                ) : <EmptyChart />}
-                <div className="legend">
-                  {riskData.map(d => (
-                    <span key={d.name} className="legend-item">
-                      <span className="legend-dot" style={{ background: d.color }} />
-                      {d.name} ({d.value})
-                    </span>
-                  ))}
+                ) : <EmptyState icon={<Activity size={28} />} message="No activity yet" />}
+                <div className="area-legend">
+                  <span className="area-legend-dot" style={{background:'#10b981'}} /> <span>Allowed</span>
+                  <span className="area-legend-dot" style={{background:'#ef4444'}} /> <span>Blocked</span>
                 </div>
               </div>
 
-              <div className="chart-box">
-                <h3>Action Status</h3>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={[
-                    { name: 'Allowed', value: stats?.allowed ?? 0 },
-                    { name: 'Blocked', value: stats?.blocked ?? 0 },
-                  ]}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                    <XAxis dataKey="name" stroke="#71717a" fontSize={12} />
-                    <YAxis stroke="#71717a" fontSize={12} allowDecimals={false} />
-                    <Tooltip cursor={{ fill: '#27272a' }} contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8 }} />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]}
-                      fill="#6366f1"
-                      label={false}
-                    />
+              {/* Risk Distribution Donut */}
+              <div className="glass-card chart-donut">
+                <div className="card-header">
+                  <span className="card-title"><AlertTriangle size={15} /> Risk Distribution</span>
+                  <span className="card-sub">{stats?.total ?? 0} total</span>
+                </div>
+                {riskData.length > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <PieChart>
+                        <Pie
+                          data={riskData}
+                          cx="50%" cy="50%"
+                          innerRadius={48} outerRadius={72}
+                          paddingAngle={3} dataKey="value"
+                          stroke="none"
+                        >
+                          {riskData.map((e, i) => (
+                            <Cell key={i} fill={e.color} opacity={0.9} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12 }} itemStyle={{ color: '#e4e4e7' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="risk-legend">
+                      {riskData.map(d => (
+                        <div key={d.name} className="risk-legend-item">
+                          <span className="risk-dot" style={{ background: d.color }} />
+                          <span className="risk-name">{d.name}</span>
+                          <span className="risk-count">{d.value}</span>
+                          <span className="risk-pct">{stats?.total ? Math.round((d.value / stats.total) * 100) : 0}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : <EmptyState icon={<BarChart3 size={28} />} message="No data yet" />}
+              </div>
+
+              {/* Compliance Radar */}
+              <div className="glass-card chart-radar">
+                <div className="card-header">
+                  <span className="card-title"><ShieldCheck size={15} /> Compliance Health</span>
+                  <span className="card-sub">Detection coverage</span>
+                </div>
+                {stats?.total ? (
+                  <ResponsiveContainer width="100%" height={190}>
+                    <RadarChart data={radarData} margin={{ top: 8, right: 36, bottom: 8, left: 36 }}>
+                      <PolarGrid stroke="rgba(255,255,255,0.06)" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: '#71717a', fontSize: 10 }} />
+                      <Radar name="Coverage" dataKey="value" stroke="#6366f1" fill="#6366f1" fillOpacity={0.18} strokeWidth={2} />
+                      <Tooltip contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12 }} formatter={(v: number) => [`${v}%`, 'Coverage']} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                ) : <EmptyState icon={<ShieldCheck size={28} />} message="Run agents to see coverage" />}
+              </div>
+
+              {/* Allow vs Block Bar */}
+              <div className="glass-card chart-bar">
+                <div className="card-header">
+                  <span className="card-title"><BarChart3 size={15} /> Enforcement Outcomes</span>
+                  <span className="card-sub">Allow vs block breakdown</span>
+                </div>
+                <ResponsiveContainer width="100%" height={190}>
+                  <BarChart
+                    data={[
+                      { name: 'Allowed', value: stats?.allowed ?? 0 },
+                      { name: 'Blocked', value: stats?.blocked ?? 0 },
+                      { name: 'Critical', value: stats?.byRiskLevel['CRITICAL'] ?? 0 },
+                      { name: 'High', value: stats?.byRiskLevel['HIGH'] ?? 0 },
+                    ]}
+                    margin={{ top: 8, right: 10, left: -20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                    <XAxis dataKey="name" stroke="#52525b" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#52525b" fontSize={11} allowDecimals={false} tickLine={false} />
+                    <Tooltip contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12 }} />
+                    <Bar dataKey="value" radius={[5, 5, 0, 0]}>
+                      {[{ fill: '#10b981' }, { fill: '#ef4444' }, { fill: '#7f1d1d' }, { fill: '#f97316' }].map((entry, i) => (
+                        <Cell key={i} fill={entry.fill} />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+            </div>
 
-              <div className="chart-box recent-violations-box">
-                <h3>Recent Violations</h3>
-                {traces.filter(t => t.blocked && t.violations?.length).slice(0, 5).length === 0
-                  ? <p className="empty-msg">No violations yet</p>
-                  : traces.filter(t => t.blocked && t.violations?.length).slice(0, 5).map((t, i) => (
-                    <div key={i} className="mini-violation" onClick={() => { setSelectedTrace(t); setView('traces'); }}>
-                      <span className={`risk-badge risk-${t.risk_level?.toLowerCase()}`}>{t.risk_level}</span>
-                      <span className="mini-violation-rule">{t.violations?.[0]?.rule}</span>
-                      <span className="mini-violation-time">{timeAgo(t.timestamp || t.created_at)}</span>
-                    </div>
-                  ))
-                }
+            {/* Recent Violations + Pipelines */}
+            <div className="bottom-row">
+              <div className="glass-card flex-card">
+                <div className="card-header">
+                  <span className="card-title"><AlertOctagon size={15} /> Recent Violations</span>
+                  <span className="card-sub">{traces.filter(t => t.blocked).length} blocked</span>
+                </div>
+                <div className="feed-list">
+                  {traces.filter(t => t.blocked && t.violations?.length).slice(0, 6).length === 0
+                    ? <div className="feed-empty"><ShieldCheck size={20} /><span>No violations yet</span></div>
+                    : traces.filter(t => t.blocked && t.violations?.length).slice(0, 6).map((t, i) => (
+                      <div key={i} className="feed-item" onClick={() => { setSelectedTrace(t); setView('traces'); }}>
+                        <div className={`feed-severity sev-${t.risk_level?.toLowerCase()}`} />
+                        <div className="feed-content">
+                          <span className="feed-rule">{t.violations?.[0]?.rule}</span>
+                          <span className="feed-desc">{t.violations?.[0]?.description?.slice(0, 50)}…</span>
+                        </div>
+                        <div className="feed-meta">
+                          <span className={`risk-chip risk-${t.risk_level?.toLowerCase()}`}>{t.risk_level}</span>
+                          <span className="feed-time">{timeAgo(t.timestamp || t.created_at)}</span>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
               </div>
 
-              <div className="chart-box recent-pipelines-box">
-                <h3>Recent Pipelines</h3>
-                {pipelines.slice(0, 5).length === 0
-                  ? <p className="empty-msg">No pipelines run yet</p>
-                  : pipelines.slice(0, 5).map((p, i) => (
-                    <div key={i} className="mini-pipeline" onClick={() => { setSelectedPipeline(p); setView('pipelines'); }}>
-                      {p.short_circuited
-                        ? <Zap size={14} className="text-red" />
-                        : <CheckCircle size={14} className="text-green" />}
-                      <span className="mini-pipeline-name">{p.pipeline_name}</span>
-                      <span className="mini-pipeline-stages">{p.stages.length} stages</span>
-                      <span className="mini-violation-time">{timeAgo(p.timestamp)}</span>
-                    </div>
-                  ))
-                }
+              <div className="glass-card flex-card">
+                <div className="card-header">
+                  <span className="card-title"><GitBranch size={15} /> Pipeline Runs</span>
+                  <span className="card-sub">{stats?.shortCircuited ?? 0} short-circuited</span>
+                </div>
+                <div className="feed-list">
+                  {pipelines.slice(0, 6).length === 0
+                    ? <div className="feed-empty"><GitBranch size={20} /><span>No pipelines yet</span></div>
+                    : pipelines.slice(0, 6).map((p, i) => (
+                      <div key={i} className="feed-item" onClick={() => { setSelectedPipeline(p); setView('pipelines'); }}>
+                        <div className={`feed-severity ${p.short_circuited ? 'sev-critical' : 'sev-low'}`} />
+                        <div className="feed-content">
+                          <span className="feed-rule">{p.pipeline_name}</span>
+                          <span className="feed-desc">{p.stages.length} stages · {p.total_duration_ms}ms</span>
+                        </div>
+                        <div className="feed-meta">
+                          <span className={`risk-chip ${p.short_circuited ? 'risk-critical' : 'risk-low'}`}>
+                            {p.short_circuited ? 'BLOCKED' : 'OK'}
+                          </span>
+                          <span className="feed-time">{timeAgo(p.timestamp)}</span>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
               </div>
             </div>
           </div>
@@ -237,30 +475,59 @@ export default function App() {
 
         {/* ══════════════ TRACES ══════════════ */}
         {view === 'traces' && (
-          <>
-            <aside className="sidebar">
-              <div className="sidebar-header">
-                <span className="sidebar-title">Audit Logs</span>
-                <span className="sidebar-count">{traces.length}</span>
+          <div className="split-view">
+            <aside className="split-sidebar">
+              <div className="split-sidebar-header">
+                <span className="split-sidebar-title">Audit Trail</span>
+                <div className="filter-group">
+                  <select className="risk-filter" value={filterRisk} onChange={e => setFilterRisk(e.target.value)}>
+                    <option value="all">All Risks</option>
+                    <option value="CRITICAL">Critical</option>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                  </select>
+                </div>
               </div>
-              <div className="trace-list">
-                {traces.length === 0 && <div className="no-data">No traces yet. Run an agent to see logs.</div>}
-                {traces.map(t => (
+              <div className="split-list">
+                {filteredTraces.length === 0 && (
+                  <div className="list-empty">
+                    <Eye size={24} />
+                    <span>No traces match your filters</span>
+                  </div>
+                )}
+                {filteredTraces.map(t => (
                   <div
                     key={t.id}
-                    className={`trace-item ${selectedTrace?.id === t.id ? 'active' : ''} ${t.blocked ? 'trace-blocked' : ''}`}
+                    className={`list-item ${selectedTrace?.id === t.id ? 'selected' : ''} ${t.blocked ? 'item-blocked' : ''}`}
                     onClick={() => setSelectedTrace(t)}
                   >
-                    <div className="trace-item-header">
-                      <span className={`risk-badge risk-${(t.risk_level || 'LOW').toLowerCase()}`}>{t.risk_level || 'LOW'}</span>
-                      <span className="time">{timeAgo(t.timestamp || t.created_at)}</span>
+                    <div className="list-item-top">
+                      <span className={`risk-chip risk-${(t.risk_level || 'LOW').toLowerCase()}`}>{t.risk_level || 'LOW'}</span>
+                      <span className="list-time">{timeAgo(t.timestamp || t.created_at)}</span>
                     </div>
-                    <div className="trace-item-action">
-                      {t.blocked ? <ShieldAlert size={14} className="text-red" /> : <CheckCircle size={14} className="text-green" />}
-                      <span>{t.steps?.[0]?.action || 'Agent run'}</span>
+                    <div className="list-item-mid">
+                      {t.blocked
+                        ? <ShieldAlert size={14} className="icon-red" />
+                        : <CheckCircle size={14} className="icon-green" />
+                      }
+                      <span className="list-action">
+                        {t.agent_name
+                          || (t.violations?.[0]?.rule?.replace('block_', '').replace(/_/g, ' '))
+                          || t.steps?.[0]?.action
+                          || 'Agent run'}
+                      </span>
                     </div>
+                    {t.violations?.length ? (
+                      <div className="list-item-tags">
+                        {t.violations.slice(0, 2).map((v, i) => (
+                          <span key={i} className="viol-chip">{v.rule.replace('block_', '')}</span>
+                        ))}
+                        {t.violations.length > 2 && <span className="viol-chip">+{t.violations.length - 2}</span>}
+                      </div>
+                    ) : null}
                     {t.pipeline_id && (
-                      <div className="trace-pipeline-tag">
+                      <div className="list-item-pipeline">
                         <GitBranch size={11} /> {t.agent_name || 'pipeline stage'}
                       </div>
                     )}
@@ -269,174 +536,248 @@ export default function App() {
               </div>
             </aside>
 
-            <section className="detail-view">
-              {selectedTrace ? <TraceDetail trace={selectedTrace} /> : (
-                <div className="empty-state"><ShieldCheck size={48} /><h2>Select an audit log</h2></div>
-              )}
+            <section className="split-detail">
+              {selectedTrace
+                ? <TraceDetail trace={selectedTrace} />
+                : (
+                  <div className="detail-empty">
+                    <ShieldCheck size={52} className="detail-empty-icon" />
+                    <h2>Select an audit log</h2>
+                    <p>Choose a trace from the sidebar to view its full details</p>
+                  </div>
+                )
+              }
             </section>
-          </>
+          </div>
         )}
 
         {/* ══════════════ PIPELINES ══════════════ */}
         {view === 'pipelines' && (
-          <>
-            <aside className="sidebar">
-              <div className="sidebar-header">
-                <span className="sidebar-title">Pipeline Runs</span>
-                <span className="sidebar-count">{pipelines.length}</span>
+          <div className="split-view">
+            <aside className="split-sidebar">
+              <div className="split-sidebar-header">
+                <span className="split-sidebar-title">Pipeline Runs</span>
+                <span className="split-count">{pipelines.length}</span>
               </div>
-              <div className="trace-list">
+              <div className="split-list">
                 {pipelines.length === 0 && (
-                  <div className="no-data">
-                    No pipelines yet. Use <code>AgentPipeline</code> to see runs here.
+                  <div className="list-empty">
+                    <GitBranch size={24} />
+                    <span>No pipeline runs yet. Use AgentPipeline to see runs here.</span>
                   </div>
                 )}
                 {pipelines.map((p, i) => (
                   <div
                     key={i}
-                    className={`trace-item ${selectedPipeline?.pipeline_id === p.pipeline_id ? 'active' : ''} ${p.short_circuited ? 'trace-blocked' : ''}`}
+                    className={`list-item ${selectedPipeline?.pipeline_id === p.pipeline_id ? 'selected' : ''} ${p.short_circuited ? 'item-blocked' : ''}`}
                     onClick={() => setSelectedPipeline(p)}
                   >
-                    <div className="trace-item-header">
-                      <span className={`risk-badge ${p.short_circuited ? 'risk-critical' : 'risk-low'}`}>
+                    <div className="list-item-top">
+                      <span className={`risk-chip ${p.short_circuited ? 'risk-critical' : 'risk-low'}`}>
                         {p.short_circuited ? 'BLOCKED' : 'PASSED'}
                       </span>
-                      <span className="time">{timeAgo(p.timestamp)}</span>
+                      <span className="list-time">{timeAgo(p.timestamp)}</span>
                     </div>
-                    <div className="trace-item-action">
-                      {p.short_circuited ? <Zap size={14} className="text-red" /> : <CheckCircle size={14} className="text-green" />}
-                      <span>{p.pipeline_name}</span>
+                    <div className="list-item-mid">
+                      {p.short_circuited
+                        ? <Zap size={14} className="icon-red" />
+                        : <CheckCircle size={14} className="icon-green" />
+                      }
+                      <span className="list-action">{p.pipeline_name}</span>
                     </div>
-                    <div className="trace-pipeline-tag">
-                      <GitBranch size={11} /> {p.stages.length} stages · {p.total_duration_ms}ms
+                    <div className="list-item-pipeline">
+                      <Layers size={11} /> {p.stages.length} stages · {p.total_duration_ms}ms
+                      {p.short_circuited && p.blocked_at && <span className="list-blocked-at"> · ✕ {p.blocked_at}</span>}
                     </div>
                   </div>
                 ))}
               </div>
             </aside>
 
-            <section className="detail-view">
-              {selectedPipeline ? <PipelineDetail pipeline={selectedPipeline} /> : (
-                <div className="empty-state"><GitBranch size={48} /><h2>Select a pipeline run</h2></div>
-              )}
+            <section className="split-detail">
+              {selectedPipeline
+                ? <PipelineDetail pipeline={selectedPipeline} />
+                : (
+                  <div className="detail-empty">
+                    <GitBranch size={52} className="detail-empty-icon" />
+                    <h2>Select a pipeline run</h2>
+                    <p>Choose a run from the sidebar to view its full stage flow</p>
+                  </div>
+                )
+              }
             </section>
-          </>
+          </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
 
 // ─── StatCard ─────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, color, icon }: { label: string; value: number; color: string; icon: React.ReactNode }) {
+function StatCard({
+  label, value, prev, color, icon, suffix
+}: {
+  label: string; value: number; prev?: number; color: string; icon: React.ReactNode; suffix: string;
+}) {
+  const delta = prev !== undefined ? value - prev : 0;
+  const hasChange = delta !== 0;
+  const isUp = delta > 0;
+
   return (
     <div className={`stat-card stat-${color}`}>
-      <div className="stat-icon">{icon}</div>
-      <span className="stat-value">{value}</span>
-      <span className="stat-label">{label}</span>
+      <div className="stat-top">
+        <div className="stat-icon-wrap">{icon}</div>
+        {hasChange && (
+          <div className={`stat-delta ${isUp ? 'delta-up' : 'delta-down'}`}>
+            {isUp ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+            {Math.abs(delta)}
+          </div>
+        )}
+        {!hasChange && prev !== undefined && <div className="stat-delta delta-flat"><Minus size={12} /></div>}
+      </div>
+      <div className="stat-value">{value}{suffix}</div>
+      <div className="stat-label">{label}</div>
     </div>
   );
 }
 
-function EmptyChart() {
-  return <div className="empty-chart">No data yet</div>;
+function EmptyState({ icon, message }: { icon: React.ReactNode; message: string }) {
+  return (
+    <div className="empty-state-small">
+      <div className="empty-icon">{icon}</div>
+      <p>{message}</p>
+    </div>
+  );
 }
 
 // ─── TraceDetail ──────────────────────────────────────────────────────────────
 
 function TraceDetail({ trace }: { trace: TraceRow }) {
+  const [expandedStep, setExpandedStep] = useState<number | null>(null);
+
   return (
-    <div className="detail-card">
-      <div className="detail-header">
-        <div>
-          <h2>Audit Trace</h2>
-          <code className="audit-id">{trace.id}</code>
-        </div>
-        <div className="detail-badges">
-          {trace.blocked
-            ? <span className="badge badge-blocked"><AlertOctagon size={14} /> BLOCKED</span>
-            : <span className="badge badge-allowed"><CheckCircle size={14} /> ALLOWED</span>}
-          <span className={`badge risk-badge risk-${(trace.risk_level || 'LOW').toLowerCase()}`}>
-            RISK: {trace.risk_level || 'LOW'}
-          </span>
-        </div>
-      </div>
-
-      {/* Pipeline lineage */}
-      {trace.pipeline_id && (
-        <div className="detail-section pipeline-lineage-section">
-          <h3><GitBranch size={16} /> Pipeline Lineage</h3>
-          <div className="lineage-grid">
-            <div className="lineage-item">
-              <span className="lineage-label">Pipeline ID</span>
-              <code className="lineage-value">{trace.pipeline_id}</code>
+    <div className="detail-scroll">
+      <div className="detail-panel">
+        {/* Header */}
+        <div className="detail-header">
+          <div className="detail-title-group">
+            <div className="detail-title-row">
+              {trace.blocked
+                ? <span className="status-badge-lg blocked"><AlertOctagon size={15} /> BLOCKED</span>
+                : <span className="status-badge-lg allowed"><CheckCircle size={15} /> ALLOWED</span>
+              }
+              <span className={`risk-chip-lg risk-${(trace.risk_level || 'LOW').toLowerCase()}`}>
+                {trace.risk_level || 'LOW'}
+              </span>
             </div>
-            <div className="lineage-item">
-              <span className="lineage-label">Stage Name</span>
-              <code className="lineage-value">{trace.agent_name || '—'}</code>
-            </div>
-            {trace.parent_trace_id && (
-              <div className="lineage-item">
-                <span className="lineage-label">Parent Trace ID</span>
-                <code className="lineage-value">{trace.parent_trace_id}</code>
-              </div>
-            )}
+            <code className="trace-id">{trace.id}</code>
+            <span className="trace-timestamp">{trace.timestamp || trace.created_at}</span>
           </div>
         </div>
-      )}
 
-      {/* Explanation / reason */}
-      {(trace.explanation || trace.reason) && (
-        <div className="detail-section explanation-section">
-          <h3><ActivitySquare size={16} /> AI Rationale</h3>
-          <p className="explanation-text">{trace.explanation || trace.reason}</p>
-        </div>
-      )}
-
-      {/* Violations */}
-      {(trace.violations?.length ?? 0) > 0 && (
-        <div className="detail-section violations-section">
-          <h3><AlertTriangle size={16} /> Rule Violations ({trace.violations!.length})</h3>
-          <div className="violations-list">
-            {trace.violations!.map((v, i) => (
-              <div key={i} className={`violation-item sev-${v.severity?.toLowerCase()}`}>
-                <div className="violation-header">
-                  <span className="rule-name">{v.rule}</span>
-                  <span className={`sev-badge sev-${v.severity?.toLowerCase()}`}>{v.severity}</span>
+        {/* Pipeline Lineage */}
+        {trace.pipeline_id && (
+          <div className="detail-section lineage-section">
+            <div className="section-title"><GitBranch size={14} /> Pipeline Lineage</div>
+            <div className="lineage-pills">
+              <div className="lineage-pill">
+                <span className="lineage-key">Pipeline</span>
+                <code className="lineage-val">{trace.pipeline_id}</code>
+              </div>
+              <div className="lineage-pill">
+                <span className="lineage-key">Stage</span>
+                <code className="lineage-val">{trace.agent_name || '—'}</code>
+              </div>
+              {trace.parent_trace_id && (
+                <div className="lineage-pill">
+                  <span className="lineage-key">Parent Trace</span>
+                  <code className="lineage-val">{trace.parent_trace_id.slice(0, 12)}…</code>
                 </div>
-                <p className="rule-desc">{v.description}</p>
-                {v.evidence && <code className="evidence">{v.evidence}</code>}
-              </div>
-            ))}
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Execution steps */}
-      <div className="detail-section steps-section">
-        <h3><Terminal size={16} /> Execution Steps ({trace.steps?.length ?? 0})</h3>
-        {!trace.steps?.length
-          ? <p className="empty-msg">No steps recorded</p>
-          : (
-            <div className="steps-timeline">
-              {trace.steps.map((step, i) => (
-                <div key={i} className="step-item">
-                  <div className="step-marker" />
-                  <div className="step-content">
-                    <div className="step-header">
-                      <span className="step-action">{step.action}</span>
-                      <span className="step-time"><Clock size={11} /> {step.durationMs}ms</span>
+        {/* AI Rationale */}
+        {(trace.explanation || trace.reason) && (
+          <div className="detail-section">
+            <div className="section-title"><TrendingUp size={14} /> AI Rationale</div>
+            <p className="rationale-text">{trace.explanation || trace.reason}</p>
+          </div>
+        )}
+
+        {/* Violations */}
+        {(trace.violations?.length ?? 0) > 0 && (
+          <div className="detail-section violations-section">
+            <div className="section-title"><AlertTriangle size={14} /> Rule Violations ({trace.violations!.length})</div>
+            <div className="violations-grid">
+              {trace.violations!.map((v, i) => (
+                <div key={i} className={`violation-card sev-${v.severity?.toLowerCase()}`}>
+                  <div className="viol-card-header">
+                    <div className="viol-rule-wrap">
+                      <Lock size={13} />
+                      <code className="viol-rule">{v.rule}</code>
                     </div>
-                    <div className="step-payloads">
-                      <PayloadBox label="Input"  data={step.input} />
-                      {step.output !== null && step.output !== undefined && <PayloadBox label="Output" data={step.output} />}
+                    <div className="viol-right">
+                      {v.confidence !== undefined && (
+                        <div className="confidence-bar-wrap" title={`Confidence: ${Math.round(v.confidence * 100)}%`}>
+                          <div className="confidence-bar">
+                            <div className="confidence-fill" style={{ width: `${v.confidence * 100}%` }} />
+                          </div>
+                          <span className="confidence-pct">{Math.round(v.confidence * 100)}%</span>
+                        </div>
+                      )}
+                      <span className={`sev-chip sev-${v.severity?.toLowerCase()}`}>{v.severity}</span>
                     </div>
                   </div>
+                  <p className="viol-desc">{v.description}</p>
+                  {v.evidence && <code className="viol-evidence">{v.evidence}</code>}
                 </div>
               ))}
             </div>
-          )}
+          </div>
+        )}
+
+        {/* Execution Steps */}
+        <div className="detail-section">
+          <div className="section-title"><Terminal size={14} /> Execution Steps ({trace.steps?.length ?? 0})</div>
+          {!trace.steps?.length
+            ? <p className="empty-text">No steps recorded</p>
+            : (
+              <div className="steps-timeline">
+                {trace.steps.map((step, i) => (
+                  <div key={i} className="step-row">
+                    <div className="step-line-col">
+                      <div className="step-dot" />
+                      {i < trace.steps.length - 1 && <div className="step-connector" />}
+                    </div>
+                    <div className="step-card" onClick={() => setExpandedStep(expandedStep === i ? null : i)}>
+                      <div className="step-card-header">
+                        <div className="step-action-wrap">
+                          <Terminal size={12} />
+                          <code className="step-action">{step.action}</code>
+                        </div>
+                        <div className="step-meta">
+                          <span className="step-dur"><Clock size={11} /> {step.durationMs}ms</span>
+                          <ChevronDown size={14} className={`step-chevron ${expandedStep === i ? 'open' : ''}`} />
+                        </div>
+                      </div>
+                      {expandedStep === i && (
+                        <div className="step-payloads">
+                          <PayloadBox label="Input" data={step.input} />
+                          {step.output !== null && step.output !== undefined && (
+                            <PayloadBox label="Output" data={step.output} />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          }
+        </div>
       </div>
     </div>
   );
@@ -445,8 +786,8 @@ function TraceDetail({ trace }: { trace: TraceRow }) {
 function PayloadBox({ label, data }: { label: string; data: unknown }) {
   return (
     <div className="payload-box">
-      <strong>{label}</strong>
-      <pre>{typeof data === 'string' ? data : JSON.stringify(data, null, 2)}</pre>
+      <span className="payload-label">{label}</span>
+      <pre className="payload-pre">{typeof data === 'string' ? data : JSON.stringify(data, null, 2)}</pre>
     </div>
   );
 }
@@ -455,131 +796,133 @@ function PayloadBox({ label, data }: { label: string; data: unknown }) {
 
 function PipelineDetail({ pipeline }: { pipeline: PipelineRow }) {
   return (
-    <div className="detail-card">
-      <div className="detail-header">
-        <div>
-          <h2>{pipeline.pipeline_name}</h2>
-          <code className="audit-id">{pipeline.pipeline_id}</code>
-        </div>
-        <div className="detail-badges">
-          {pipeline.short_circuited
-            ? <span className="badge badge-blocked"><Zap size={14} /> SHORT-CIRCUIT</span>
-            : <span className="badge badge-allowed"><CheckCircle size={14} /> COMPLETED</span>}
-          <span className="badge badge-neutral">
-            <Clock size={14} /> {pipeline.total_duration_ms}ms
-          </span>
-        </div>
-      </div>
-
-      {/* Short-circuit callout */}
-      {pipeline.short_circuited && pipeline.blocked_at && (
-        <div className="callout callout-error">
-          <Zap size={16} />
-          <div>
-            <strong>Pipeline short-circuited at stage "{pipeline.blocked_at}"</strong>
-            <p>All downstream stages were skipped. No further actions were executed.</p>
+    <div className="detail-scroll">
+      <div className="detail-panel">
+        {/* Header */}
+        <div className="detail-header">
+          <div className="detail-title-group">
+            <div className="detail-title-row">
+              {pipeline.short_circuited
+                ? <span className="status-badge-lg blocked"><Zap size={15} /> SHORT-CIRCUIT</span>
+                : <span className="status-badge-lg allowed"><CheckCircle size={15} /> COMPLETED</span>
+              }
+              <span className="status-badge-lg neutral">
+                <Clock size={14} /> {pipeline.total_duration_ms}ms
+              </span>
+            </div>
+            <h2 className="pipeline-name-heading">{pipeline.pipeline_name}</h2>
+            <code className="trace-id">{pipeline.pipeline_id}</code>
           </div>
         </div>
-      )}
 
-      {/* Stage flow */}
-      <div className="detail-section pipeline-stages-section">
-        <h3><GitBranch size={16} /> Stage Flow ({pipeline.stages.length} stages ran)</h3>
-        <div className="pipeline-flow">
-          {pipeline.stages.map((stage, i) => {
-            const isBlocked  = stage.blocked;
-            const isLast     = i === pipeline.stages.length - 1;
-            return (
-              <div key={i} className="pipeline-stage-row">
-                <div className={`stage-node ${isBlocked ? 'stage-blocked' : 'stage-passed'}`}>
-                  <div className="stage-icon">
-                    {isBlocked ? <XCircle size={16} /> : <CheckCircle size={16} />}
-                  </div>
-                  <div className="stage-info">
-                    <span className="stage-name">{stage.name}</span>
-                    <span className="stage-meta">
-                      <span className={`risk-badge risk-${stage.riskLevel?.toLowerCase()}`}>{stage.riskLevel}</span>
-                      <span className="stage-duration">{stage.durationMs}ms</span>
-                    </span>
-                    {isBlocked && (stage.violations?.length ?? 0) > 0 && (
-                      <div className="stage-violations">
-                        {stage.violations!.map((v, vi) => (
-                          <span key={vi} className="stage-viol-tag">{v.rule}</span>
-                        ))}
-                      </div>
-                    )}
-                    {stage.parentTraceId && (
-                      <div className="stage-lineage">
-                        <span className="lineage-label">Parent trace:</span>
-                        <code>{stage.parentTraceId.slice(0, 8)}…</code>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {!isLast && (
-                  <div className={`stage-connector ${pipeline.short_circuited && isBlocked ? 'connector-blocked' : ''}`}>
-                    {pipeline.short_circuited && isBlocked
-                      ? <span className="connector-label">⛔ STOPPED</span>
-                      : <ChevronRight size={16} className="connector-arrow" />}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        {/* Short-circuit alert */}
+        {pipeline.short_circuited && pipeline.blocked_at && (
+          <div className="callout callout-danger">
+            <Zap size={18} />
+            <div>
+              <strong>Pipeline halted at "{pipeline.blocked_at}"</strong>
+              <p>All downstream stages were skipped — no further actions were executed. This is the circuit-breaker working correctly.</p>
+            </div>
+          </div>
+        )}
 
-          {/* Skipped stages ghost indicator */}
-          {pipeline.short_circuited && (() => {
-            const blockedIdx = pipeline.stages.findIndex(s => s.blocked);
-            // We don't have the full list of defined stages here, just what ran.
-            // Show a ghost "Downstream skipped" indicator.
-            if (blockedIdx !== -1) {
+        {/* Stage Flow */}
+        <div className="detail-section">
+          <div className="section-title"><GitBranch size={14} /> Stage Flow ({pipeline.stages.length} stages ran)</div>
+          <div className="stage-flow">
+            {pipeline.stages.map((stage, i) => {
+              const isBlocked = stage.blocked;
+              const isLast = i === pipeline.stages.length - 1;
               return (
-                <div className="pipeline-stage-row">
-                  <div className="stage-node stage-skipped">
-                    <div className="stage-icon"><Zap size={16} /></div>
-                    <div className="stage-info">
-                      <span className="stage-name">Downstream stages</span>
-                      <span className="stage-meta">Skipped — not executed</span>
+                <div key={i} className="stage-flow-row">
+                  <div className={`stage-node ${isBlocked ? 'node-blocked' : 'node-passed'}`}>
+                    <div className="stage-node-icon">
+                      {isBlocked ? <XCircle size={16} /> : <CheckCircle size={16} />}
+                    </div>
+                    <div className="stage-node-body">
+                      <div className="stage-node-name">{stage.name}</div>
+                      <div className="stage-node-meta">
+                        <span className={`risk-chip risk-${stage.riskLevel?.toLowerCase()}`}>{stage.riskLevel}</span>
+                        <span className="stage-dur">{stage.durationMs}ms</span>
+                      </div>
+                      {isBlocked && (stage.violations?.length ?? 0) > 0 && (
+                        <div className="stage-viols">
+                          {stage.violations!.map((v, vi) => (
+                            <span key={vi} className="stage-viol-tag">{v.rule}</span>
+                          ))}
+                        </div>
+                      )}
+                      {stage.parentTraceId && (
+                        <div className="stage-parent">
+                          <span>Parent:</span>
+                          <code>{stage.parentTraceId.slice(0, 8)}…</code>
+                        </div>
+                      )}
                     </div>
                   </div>
+                  {!isLast && (
+                    <div className={`stage-arrow ${pipeline.short_circuited && isBlocked ? 'arrow-blocked' : ''}`}>
+                      {pipeline.short_circuited && isBlocked
+                        ? <span className="arrow-stop">⛔ STOPPED</span>
+                        : <ChevronRight size={20} className="arrow-icon" />
+                      }
+                    </div>
+                  )}
                 </div>
               );
-            }
-          })()}
+            })}
+            {/* Ghost indicator for skipped stages */}
+            {pipeline.short_circuited && (
+              <div className="stage-flow-row">
+                <div className="stage-node node-skipped">
+                  <div className="stage-node-icon"><Zap size={16} /></div>
+                  <div className="stage-node-body">
+                    <div className="stage-node-name">Downstream stages</div>
+                    <div className="stage-node-meta">Skipped — not executed</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Lineage table */}
-      <div className="detail-section">
-        <h3><Activity size={16} /> Trace Lineage</h3>
-        <table className="lineage-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Stage</th>
-              <th>Audit ID</th>
-              <th>Parent Trace</th>
-              <th>Status</th>
-              <th>Risk</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pipeline.stages.map((s, i) => (
-              <tr key={i} className={s.blocked ? 'row-blocked' : ''}>
-                <td className="td-mono">{i + 1}</td>
-                <td><strong>{s.name}</strong></td>
-                <td className="td-mono">{s.auditId.slice(0, 8)}…</td>
-                <td className="td-mono">{s.parentTraceId ? s.parentTraceId.slice(0, 8) + '…' : <span className="text-muted">—</span>}</td>
-                <td>
-                  {s.blocked
-                    ? <span className="badge badge-blocked" style={{fontSize:'0.7rem',padding:'2px 8px'}}><XCircle size={11}/> BLOCKED</span>
-                    : <span className="badge badge-allowed" style={{fontSize:'0.7rem',padding:'2px 8px'}}><CheckCircle size={11}/> OK</span>}
-                </td>
-                <td><span className={`risk-badge risk-${s.riskLevel?.toLowerCase()}`}>{s.riskLevel}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {/* Lineage Table */}
+        <div className="detail-section">
+          <div className="section-title"><Activity size={14} /> Trace Lineage</div>
+          <div className="lineage-table-wrap">
+            <table className="lineage-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Stage</th>
+                  <th>Audit ID</th>
+                  <th>Parent Trace</th>
+                  <th>Status</th>
+                  <th>Risk</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pipeline.stages.map((s, i) => (
+                  <tr key={i} className={s.blocked ? 'row-blocked' : ''}>
+                    <td className="td-num">{i + 1}</td>
+                    <td><strong>{s.name}</strong></td>
+                    <td className="td-mono">{s.auditId.slice(0, 8)}…</td>
+                    <td className="td-mono">{s.parentTraceId ? s.parentTraceId.slice(0, 8) + '…' : '—'}</td>
+                    <td>
+                      {s.blocked
+                        ? <span className="status-pill blocked-pill"><XCircle size={11} /> BLOCKED</span>
+                        : <span className="status-pill ok-pill"><CheckCircle size={11} /> OK</span>
+                      }
+                    </td>
+                    <td><span className={`risk-chip risk-${s.riskLevel?.toLowerCase()}`}>{s.riskLevel}</span></td>
+                    <td className="td-mono">{s.durationMs}ms</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );

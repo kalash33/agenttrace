@@ -1,7 +1,7 @@
 {
   "name": "@hackerx333/agenttrace",
-  "version": "1.1.0",
-  "description": "The open-source accountability layer for AI agents. Trace every action. Explain every decision. Control what matters.",
+  "version": "2.0.0",
+  "description": "The open-source circuit breaker and accountability layer for multi-agent AI pipelines. Trace every action. Explain every decision. Short-circuit before the damage propagates.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -44,9 +44,19 @@
     "typescript",
     "agenttrace",
     "eu-ai-act",
-    "compliance"
+    "compliance",
+    "agent-trace",
+    "hallucination-detection",
+    "pipeline-safety",
+    "owasp-llm",
+    "gdpr",
+    "hipaa",
+    "ndjson",
+    "shadow-mode",
+    "pii-detection",
+    "real-time-blocking"
   ],
-  "author": "",
+  "author": "Kalash Poddar <kalash33@github>",
   "license": "MIT",
   "repository": {
     "type": "git",

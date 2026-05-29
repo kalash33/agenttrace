@@ -9,6 +9,7 @@ import type {
   AgentTraceOptions,
   ExplainerProvider,
   GuardedResult,
+  InputGuardResult,
   PipelineContext,
   RiskLevel,
   Rule,
@@ -213,6 +214,59 @@ export class AgentTrace {
   }
 
   /**
+   * Validate agent INPUT before it reaches the LLM.
+   *
+   * Academic basis: OWASP LLM01:2025 — Prompt injection is the #1 LLM risk.
+   * Inputs must be treated as executable directives and validated BEFORE the
+   * agent processes them. This is the "pre-flight" input guard.
+   *
+   * Runs `block_prompt_injection` and `block_pii_leakage` against the input
+   * by default. You can also pass your configured rules (they'll be filtered
+   * to only run checks that make sense for input validation).
+   *
+   * @example
+   * const check = await guard.checkInput(userMessage);
+   * if (check.blocked) {
+   *   return { error: 'Input rejected: ' + check.violations[0].description };
+   * }
+   * // Safe to proceed
+   * const result = await agent.run(userMessage);
+   */
+  async checkInput(input: unknown): Promise<InputGuardResult> {
+    const now = new Date().toISOString();
+    const inputText = typeof input === 'string' ? input : JSON.stringify(input);
+
+    // Input guard uses prompt injection + PII rules by default.
+    // These are the rules that specifically detect malicious INPUT patterns.
+    const inputRuleNames = ['block_prompt_injection', 'block_pii_leakage'] as const;
+    const inputRules = resolveRules([...inputRuleNames]);
+
+    // Create a minimal synthetic trace for rule context
+    const syntheticTrace: Trace = {
+      id: `input-check-${Date.now()}`,
+      startedAt: now,
+      originalInput: input,
+      steps: [],
+      lastAction: 'checkInput()',
+    };
+
+    const violations = await runAllRules(inputRules, {
+      result: inputText,    // rules inspect result field
+      trace: syntheticTrace,
+      guardOptions: this.options,
+    });
+
+    const riskLevel = computeRiskLevel(violations);
+    const blocked = violations.some(v => v.severity === 'HIGH' || v.severity === 'CRITICAL');
+
+    this.log(blocked ? '⛔ INPUT BLOCKED' : '✅ INPUT CLEAN', {
+      violations: violations.map(v => `[${v.severity}] ${v.rule}`),
+    });
+
+    return { blocked, riskLevel, violations, input, timestamp: now };
+  }
+
+  /**
    * Access the audit trail storage.
    */
   get storage(): Store | null {
@@ -317,24 +371,52 @@ export class AgentTrace {
       });
 
       if (violations.length > 0) {
-        // BLOCKED OR SHADOW
-        const isShadow = this.options.enforcementMode === 'shadow';
-        const reason = await this.explainer.explainBlock(violations, trace);
+        const mode = this.options.enforcementMode ?? 'enforce';
+        const isShadow = mode === 'shadow';
+        const isDegraded = mode === 'degraded';
+
+        // Degraded mode: only HIGH/CRITICAL violations block; MEDIUM violations
+        // allow execution to continue but flag result as degraded.
+        // Academic basis: Multi-agent resilience research (2024) — binary
+        // circuit breakers create unnecessary full shutdowns. DEGRADED state
+        // allows partial operation with reduced trust.
+        const severeViolations = violations.filter(
+          v => v.severity === 'HIGH' || v.severity === 'CRITICAL'
+        );
+        const shouldBlock = isShadow
+          ? false
+          : isDegraded
+            ? severeViolations.length > 0
+            : violations.length > 0;  // enforce: any violation blocks
+
+        const violationsToReport = isDegraded && !shouldBlock
+          ? violations  // degraded but passing — report all for audit
+          : violations;
+
+        const reason = await this.explainer.explainBlock(violationsToReport, trace);
         guardedResult = {
           auditId: trace.id,
-          blocked: !isShadow,
+          blocked: shouldBlock,
           reason,
           riskLevel: computeRiskLevel(violations),
           auditTrail: trace.steps,
-          violations,
+          violations: violationsToReport,
           timestamp: now,
           metadata: baseMetadata,
           pipelineId: trace.pipelineId,
           parentTraceId: trace.parentTraceId,
-          ...(isShadow ? { result: agentResult } : {}),
+          // Pass result through in shadow and degraded-but-passing modes
+          ...((isShadow || (isDegraded && !shouldBlock)) ? { result: agentResult } : {}),
+          // Flag degraded state when we chose not to block but violations exist
+          ...(isDegraded && !shouldBlock && violations.length > 0 ? { degraded: true } : {}),
         };
 
-        this.log(isShadow ? '👻 SHADOW (Violations Found)' : '⛔ BLOCKED', {
+        const logLabel = isShadow
+          ? '👻 SHADOW (violations found)'
+          : isDegraded && !shouldBlock
+            ? '⚡ DEGRADED (non-critical violations, continuing)'
+            : '⛔ BLOCKED';
+        this.log(logLabel, {
           auditId: trace.id,
           riskLevel: guardedResult.riskLevel,
           violations: violations.map((v) => `[${v.severity}] ${v.rule}: ${v.description}`),

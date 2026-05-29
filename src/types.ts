@@ -98,6 +98,19 @@ export interface Violation {
   severity: RiskLevel;
   /** Optional remediation guidance */
   remediation?: string;
+  /**
+   * Detector confidence score (0.0 – 1.0).
+   *
+   * Academic basis: Severity calibration research (arXiv 2024) identified that
+   * binary pass/fail guardrails are insufficient — probabilistic confidence enables
+   * better escalation decisions and allows consumers to set risk thresholds.
+   *
+   *  1.0 = deterministic match (regex, exact numeric mismatch)
+   *  0.8 = high-confidence pattern (negation flip)
+   *  0.6 = moderate confidence (bigram overlap near threshold)
+   *  < 0.5 = low confidence (heuristic, should be reviewed)
+   */
+  confidence?: number;
 }
 
 export interface Rule {
@@ -175,8 +188,15 @@ export interface AgentTraceOptions {
    * Defines how rules are applied.
    * 'enforce' (default): Blocks agent execution when rules are violated.
    * 'shadow': Traces and flags violations, but allows execution to continue (Dry Run).
+   * 'degraded': HIGH/CRITICAL violations block; MEDIUM violations are logged but allow
+   *             execution to continue with a degradation flag. Useful for graceful
+   *             fallback when full operation is preferred over total shutdown.
+   *
+   * Academic basis: Multi-agent resilience research (2024) — binary circuit breakers
+   * create unnecessary full shutdowns. A DEGRADED state allows systems to continue
+   * operating with reduced trust and extra monitoring when only non-critical rules fire.
    */
-  enforcementMode?: 'enforce' | 'shadow';
+  enforcementMode?: 'enforce' | 'shadow' | 'degraded';
 
   /**
    * Generate plain-English explanations for every decision.
@@ -283,6 +303,12 @@ export interface GuardedResult {
   pipelineId?: string;
   /** auditId of the previous stage — present when this run was part of an AgentPipeline */
   parentTraceId?: string;
+  /**
+   * True when enforcementMode='degraded' and MEDIUM violations were detected
+   * but execution was allowed to continue. Consumers should treat degraded results
+   * with reduced trust (e.g., add human review, reduce autonomy for next step).
+   */
+  degraded?: boolean;
 }
 
 // ─── AgentPipeline Types ──────────────────────────────────────────────────────
@@ -384,6 +410,79 @@ export interface AgentPipelineOptions {
    * @default true
    */
   persist?: boolean;
+}
+
+// ─── Input Guard Result ───────────────────────────────────────────────────────
+
+/**
+ * Result of a pre-execution input validation check.
+ *
+ * Academic basis: OWASP LLM01:2025 — "Prompt injection is the #1 LLM risk.
+ * Pre-execution input guardrails treat inputs as executable directives
+ * and must validate them before they ever reach the LLM."
+ */
+export interface InputGuardResult {
+  /** Whether the input was blocked */
+  blocked: boolean;
+  /** Risk level of the detected input threat */
+  riskLevel: RiskLevel;
+  /** Violations found in the input */
+  violations: Violation[];
+  /** The validated input (may be sanitised in future versions) */
+  input: unknown;
+  /** ISO timestamp of when the input check ran */
+  timestamp: string;
+}
+
+// ─── Cross-Stage Entity Consistency ──────────────────────────────────────────
+
+/**
+ * A named entity extracted from an agent output.
+ * Used for cross-stage consistency validation.
+ */
+export interface ExtractedEntity {
+  /** Entity type: 'person', 'amount', 'date', 'id', 'org', 'location' */
+  type: 'person' | 'amount' | 'date' | 'id' | 'org' | 'location' | 'generic';
+  /** Normalised value for comparison (lowercased, stripped) */
+  value: string;
+  /** Raw text as it appeared in the output */
+  raw: string;
+  /** Which pipeline stage this entity was found in */
+  stage: string;
+}
+
+/**
+ * A contradiction found between entities across pipeline stages.
+ */
+export interface EntityContradiction {
+  /** Entity type that conflicts */
+  type: ExtractedEntity['type'];
+  /** What Stage A said */
+  stageA: { stage: string; value: string; raw: string };
+  /** What Stage B said (conflicting) */
+  stageB: { stage: string; value: string; raw: string };
+  /** Confidence that this is a real contradiction (0-1) */
+  confidence: number;
+  /** Severity of this contradiction */
+  severity: RiskLevel;
+}
+
+/**
+ * Full report of cross-stage entity consistency validation.
+ *
+ * Academic basis: Multi-agent coordination literature (2024) — entities
+ * established in Stage 1 must be consistent in downstream stages or the
+ * pipeline is propagating errors ("hallucination cascade").
+ */
+export interface ConsistencyReport {
+  /** Whether all stages are internally consistent */
+  consistent: boolean;
+  /** All entities found across all stages */
+  entities: ExtractedEntity[];
+  /** Detected contradictions between stages */
+  contradictions: EntityContradiction[];
+  /** Names of pipeline stages that were analysed */
+  stagesAnalysed: string[];
 }
 
 // ─── Backwards Compatibility Alias ──────────────────────────────────────────
