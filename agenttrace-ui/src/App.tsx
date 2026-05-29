@@ -4,7 +4,7 @@ import {
   Terminal, Clock, AlertOctagon, BarChart3,
   GitBranch, Zap, XCircle, ChevronRight, RefreshCw, Database,
   TrendingUp, Eye, Lock, Search, Bell, ChevronDown, Filter,
-  Shield, Layers, ArrowUpRight, ArrowDownRight, Minus,
+  Shield, Layers, ArrowUpRight, ArrowDownRight, Minus, Copy, X,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -85,6 +85,32 @@ function blockRate(stats: Stats | null) {
   return Math.round((stats.blocked / stats.total) * 100);
 }
 
+// ─── CopyableId ─────────────────────────────────────────────────────────────
+// Renders a shortened UUID that:
+//   • Shows full UUID on hover (native browser tooltip)
+//   • Copies full UUID to clipboard on click
+//   • Flashes a ✓ check for 1.5s after copy
+function CopyableId({ id, short = 12, className = '' }: { id: string; short?: number; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handle = () => {
+    navigator.clipboard.writeText(id).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {/* ignore */});
+  };
+  const display = id.length > short + 1 ? id.slice(0, short) + '…' : id;
+  return (
+    <code
+      className={`copyable-id ${copied ? 'copied' : ''} ${className}`}
+      title={id}
+      onClick={handle}
+    >
+      {copied ? '✓ copied' : display}
+      <Copy size={11} className="copy-icon" />
+    </code>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -156,10 +182,13 @@ export default function App() {
   // Filtered traces
   const filteredTraces = traces.filter(t => {
     const matchRisk = filterRisk === 'all' || t.risk_level === filterRisk;
-    const matchSearch = !searchQuery ||
-      t.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.steps?.[0]?.action?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.violations?.some(v => v.rule.toLowerCase().includes(searchQuery.toLowerCase()));
+    const q = searchQuery.toLowerCase();
+    const matchSearch = !q ||
+      t.id.toLowerCase().includes(q) ||
+      (t.agent_name?.toLowerCase().includes(q) ?? false) ||
+      (t.pipeline_id?.toLowerCase().includes(q) ?? false) ||
+      t.steps?.[0]?.action?.toLowerCase().includes(q) ||
+      t.violations?.some(v => v.rule.toLowerCase().includes(q) || v.description?.toLowerCase().includes(q));
     return matchRisk && matchSearch;
   });
 
@@ -229,10 +258,19 @@ export default function App() {
               <Search size={14} />
               <input
                 id="trace-search"
-                placeholder="Search traces, rules..."
+                placeholder="Search traces, rules, audit IDs…"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
               />
+              {searchQuery && (
+                <button
+                  className="search-clear"
+                  onClick={() => setSearchQuery('')}
+                  title="Clear search"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
             <button className="icon-btn"><Bell size={16} /></button>
             <button className="icon-btn"><Filter size={16} /></button>
@@ -480,7 +518,7 @@ export default function App() {
               <div className="split-sidebar-header">
                 <span className="split-sidebar-title">Audit Trail</span>
                 <div className="filter-group">
-                  <select className="risk-filter" value={filterRisk} onChange={e => setFilterRisk(e.target.value)}>
+                  <select id="risk-filter" className="risk-filter" value={filterRisk} onChange={e => setFilterRisk(e.target.value)}>
                     <option value="all">All Risks</option>
                     <option value="CRITICAL">Critical</option>
                     <option value="HIGH">High</option>
@@ -671,7 +709,7 @@ function TraceDetail({ trace }: { trace: TraceRow }) {
                 {trace.risk_level || 'LOW'}
               </span>
             </div>
-            <code className="trace-id">{trace.id}</code>
+            <CopyableId id={trace.id} short={32} className="trace-id" />
             <span className="trace-timestamp">{trace.timestamp || trace.created_at}</span>
           </div>
         </div>
@@ -683,7 +721,7 @@ function TraceDetail({ trace }: { trace: TraceRow }) {
             <div className="lineage-pills">
               <div className="lineage-pill">
                 <span className="lineage-key">Pipeline</span>
-                <code className="lineage-val">{trace.pipeline_id}</code>
+                <CopyableId id={trace.pipeline_id!} short={12} />
               </div>
               <div className="lineage-pill">
                 <span className="lineage-key">Stage</span>
@@ -692,7 +730,7 @@ function TraceDetail({ trace }: { trace: TraceRow }) {
               {trace.parent_trace_id && (
                 <div className="lineage-pill">
                   <span className="lineage-key">Parent Trace</span>
-                  <code className="lineage-val">{trace.parent_trace_id.slice(0, 12)}…</code>
+                  <CopyableId id={trace.parent_trace_id} short={12} />
                 </div>
               )}
             </div>
@@ -811,7 +849,7 @@ function PipelineDetail({ pipeline }: { pipeline: PipelineRow }) {
               </span>
             </div>
             <h2 className="pipeline-name-heading">{pipeline.pipeline_name}</h2>
-            <code className="trace-id">{pipeline.pipeline_id}</code>
+            <CopyableId id={pipeline.pipeline_id} short={32} className="trace-id" />
           </div>
         </div>
 
@@ -855,7 +893,7 @@ function PipelineDetail({ pipeline }: { pipeline: PipelineRow }) {
                       {stage.parentTraceId && (
                         <div className="stage-parent">
                           <span>Parent:</span>
-                          <code>{stage.parentTraceId.slice(0, 8)}…</code>
+                          <CopyableId id={stage.parentTraceId} short={8} />
                         </div>
                       )}
                     </div>
@@ -907,8 +945,8 @@ function PipelineDetail({ pipeline }: { pipeline: PipelineRow }) {
                   <tr key={i} className={s.blocked ? 'row-blocked' : ''}>
                     <td className="td-num">{i + 1}</td>
                     <td><strong>{s.name}</strong></td>
-                    <td className="td-mono">{s.auditId.slice(0, 8)}…</td>
-                    <td className="td-mono">{s.parentTraceId ? s.parentTraceId.slice(0, 8) + '…' : '—'}</td>
+                    <td className="td-mono"><CopyableId id={s.auditId} short={8} /></td>
+                    <td className="td-mono">{s.parentTraceId ? <CopyableId id={s.parentTraceId} short={8} /> : '—'}</td>
                     <td>
                       {s.blocked
                         ? <span className="status-pill blocked-pill"><XCircle size={11} /> BLOCKED</span>
