@@ -4,27 +4,36 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-agenttrace"
-version = "1.0.0"
-description = "The accountability layer for AI agents. Trace, explain, and control agent actions."
+version = "2.0.0"
+description = "The accountability layer for AI agents — trace, explain, and circuit-break multi-agent pipelines."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
     { name = "AgentTrace Contributors", email = "hello@agenttrace.ai" }
 ]
+keywords = ["ai", "agents", "llm", "safety", "observability", "guardrails", "hallucination", "circuit-breaker", "owasp", "eu-ai-act"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Intended Audience :: Developers",
+    "Development Status :: 5 - Production/Stable",
 ]
 dependencies = [
-    "openai>=1.0.0",
     "pydantic>=2.0.0",
     "typing-extensions>=4.0.0",
 ]
 
 [project.optional-dependencies]
+openai = ["openai>=1.0.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
@@ -34,7 +43,10 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/kalash33/agenttrace"
+Documentation = "https://github.com/kalash33/agenttrace#readme"
+Repository = "https://github.com/kalash33/agenttrace"
 Issues = "https://github.com/kalash33/agenttrace/issues"
+Changelog = "https://github.com/kalash33/agenttrace/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agenttrace"]
