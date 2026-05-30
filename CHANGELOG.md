@@ -25,10 +25,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - **Human-readable action labels** — sidebar shows violation rule name instead of always `function_call`
 
 #### Fixed
-- Charts grid layout — was broken (`grid-template-columns: 280px 1fr 260px 260px` left only 57px for area chart). Now correct 2×2 responsive grid
-- Pipeline/trace click selection — functional `setState(prev => prev ?? newVal)` prevents re-render overwriting user selection
+- Charts grid layout — was broken, now correct 2×2 responsive grid
+- Pipeline/trace click selection — functional `setState` prevents re-render overwriting user selection
 - Radar axis labels truncated — added explicit margins to `RadarChart`
-- Search input form accessibility warning — added `id="trace-search"`
+- Search input accessibility — added `id="trace-search"` and `id="risk-filter"` (zero console warnings)
 - `setSelectedTrace` / `setSelectedPipeline` only set on first load (not every poll cycle)
 
 #### Changed
@@ -36,6 +36,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - `description` updated to reflect circuit breaker + accountability framing
 - `keywords` expanded with `hallucination-detection`, `pipeline-safety`, `owasp-llm`, `gdpr`, `hipaa`, `shadow-mode`, `pii-detection`, `real-time-blocking`
 - Bar chart now shows 4 bars (Allowed, Blocked, Critical, High) instead of 2
+- **Dashboard UX polish:**
+  - `CopyableId` component — click any audit/pipeline/parent-trace ID to copy full UUID; hover shows full ID via tooltip; 1.5s green "✓ copied" flash
+  - Search bar ✕ clear button appears when typing — one click to reset
+  - Search now covers `agent_name`, `pipeline_id`, violation descriptions (not just rule name)
+  - Search placeholder updated to "Search traces, rules, audit IDs…"
+- **Python SDK `ai-agenttrace` 2.0.0 published to PyPI:**
+  - `openai` dependency made optional (`pip install ai-agenttrace[openai]`)
+  - Added `keywords` for PyPI discoverability
+  - Added Python 3.9–3.12 classifiers, Security topic, Production/Stable status
+  - Added Documentation, Repository, Changelog project URLs
+
 
 ---
 
